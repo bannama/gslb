@@ -1,12 +1,12 @@
 package com.oneops.gslb;
 
-import com.oneops.gslb.v2.domain.AuthStatusResponse;
-import com.oneops.gslb.v2.domain.CreateMtdBaseRequest;
-import com.oneops.gslb.v2.domain.DataCentersResponse;
-import com.oneops.gslb.v2.domain.MtdBaseHostRequest;
-import com.oneops.gslb.v2.domain.MtdBaseHostResponse;
-import com.oneops.gslb.v2.domain.MtdBaseResponse;
-import com.oneops.gslb.v2.domain.MtdHostResponse;
+import com.oneops.gslb.mtd.v2.domain.AuthStatusResponse;
+import com.oneops.gslb.mtd.v2.domain.CreateMtdBaseRequest;
+import com.oneops.gslb.mtd.v2.domain.DataCentersResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseHostRequest;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseHostResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdHostResponse;
 import retrofit2.Call;
 import retrofit2.http.Body;
 import retrofit2.http.DELETE;

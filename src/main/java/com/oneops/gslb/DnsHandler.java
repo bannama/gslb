@@ -7,6 +7,11 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.oneops.gslb.domain.Action;
+import com.oneops.gslb.domain.DeployedLb;
+import com.oneops.gslb.domain.Fqdn;
+import com.oneops.gslb.domain.GslbResponse;
+import com.oneops.gslb.domain.InfobloxConfig;
 import com.oneops.infoblox.InfobloxClient;
 import com.oneops.infoblox.model.a.ARec;
 import com.oneops.infoblox.model.cname.CNAME;
@@ -68,8 +73,8 @@ public class DnsHandler {
     addAlias(fqdn.aliasesJson(), currentAliases, t -> (getFullAlias(t, context)));
     addAlias(fqdn.fullAliasesJson(), currentAliases, Function.identity());
 
-    if (context.getRequest().action() == Action.DELETE) {
-      if (context.getRequest().platformEnabled()) {
+    if (context.getRequest().action() == Action.delete) {
+      if (!context.getRequest().platformEnabled()) {
         logger.info(context.logKey() + "deleting all cnames as platform is getting disabled");
         deleteCNames(context, currentAliases, infoBloxClient);
       }
@@ -129,6 +134,7 @@ public class DnsHandler {
       if (isNotBlank(lbVip)) {
         entriesMap.put(cloudEntry, lbVip);
         try {
+          boolean alreadyExists = false;
           List<ARec> records = infobloxClient.getARec(cloudEntry);
           if (records != null && records.size() == 1) {
             if (lbVip.equals(records.get(0).ipv4Addr())) {
@@ -136,13 +142,16 @@ public class DnsHandler {
               return;
             }
             else {
+              alreadyExists = true;
               logger.info(context.logKey() + "cloud dns entry already exists, but not matching");
             }
           }
 
-          logger.info(context.logKey() + "cloud dns entry: " + cloudEntry + ", deleting the current entry and recreating it");
-          List<String> list = infobloxClient.deleteARec(cloudEntry);
-          logger.info(context.logKey() + "infoblox deleted cloud entries count " + list.size());
+          if (alreadyExists) {
+            logger.info(context.logKey() + "cloud dns entry: " + cloudEntry + ", deleting the current entry and recreating it");
+            List<String> list = infobloxClient.deleteARec(cloudEntry);
+            logger.info(context.logKey() + "infoblox deleted cloud entries count " + list.size());
+          }
           logger.info(context.logKey() + "creating cloud dns entry " + cloudEntry);
           ARec aRecord = infobloxClient.createARec(cloudEntry, lbVip);
           logger.info(context.logKey() + "arecord created " + aRecord);

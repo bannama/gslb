@@ -8,7 +8,16 @@ import static org.mockito.Mockito.when;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
-import com.oneops.gslb.GslbRequest.Builder;
+import com.oneops.gslb.domain.Action;
+import com.oneops.gslb.domain.Cloud;
+import com.oneops.gslb.domain.DeployedLb;
+import com.oneops.gslb.domain.Fqdn;
+import com.oneops.gslb.domain.GslbRequest;
+import com.oneops.gslb.domain.GslbRequest.Builder;
+import com.oneops.gslb.domain.GslbResponse;
+import com.oneops.gslb.domain.InfobloxConfig;
+import com.oneops.gslb.domain.LbConfig;
+import com.oneops.gslb.domain.TorbitConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +43,7 @@ public class DnsHandlerTest {
 
   @Test
   public void addCnames() {
-    Context context = context(Action.ADD,"Plt", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c1",
+    Context context = context(Action.add,"Plt", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c1",
         Fqdn.create("[test1]", "[Test1.xyz.com]", "proximity"), null,
         "10.1.1.10", "prod.xyz.com", true);
     dnsHandler.setupDnsEntries(context);
@@ -49,7 +58,7 @@ public class DnsHandlerTest {
 
   @Test
   public void modifyCnames() {
-    Context context = context(Action.UPDATE, "plt", ".env.a1.org.gslb.xyz.com", "env.a1.org", "c2",
+    Context context = context(Action.update, "plt", ".env.a1.org.gslb.xyz.com", "env.a1.org", "c2",
         Fqdn.create("[test2]", "[test2.xyz.com]", "proximity"),
         Fqdn.create("[test1]", "[test1.xyz.com]", "proximity"),
         "10.1.1.20", "prod.xyz.com", true);
@@ -68,22 +77,23 @@ public class DnsHandlerTest {
 
   @Test
   public void shutdownCloud() {
-    Context context = context(Action.DELETE,"plt", ".env.a1.org.gslb.xyz.com", "env.a1.org",
+    Context context = context(Action.delete,"plt", ".env.a1.org.gslb.xyz.com", "env.a1.org",
         "c2", Fqdn.create("[test3]", "[test3.xyz.com]", "proximity"), null,
-        "10.1.1.30", "prod.xyz.com", false);
+        "10.1.1.30", "prod.xyz.com", true);
     dnsHandler.setupDnsEntries(context);
     Map<String, String> cnames = dnsMock.getNewCnames();
     assertEquals(0, cnames.size());
     assertEquals(0, dnsMock.getDeleteCnames().size());
     List<String> arecs = dnsMock.getDeleteArecs();
     assertTrue(arecs.size() == 1 && "plt.env.a1.org.c2.prod.xyz.com".equals(arecs.get(0)));
+    assertTrue(dnsMock.getDeleteCnames().isEmpty());
   }
 
   @Test
   public void platformDisable() {
-    Context context = context(Action.DELETE,"Plt4", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c2",
+    Context context = context(Action.delete,"Plt4", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c2",
         Fqdn.create("[test4]", "[test4.xyz.com]", "proximity"), null,
-        "10.1.1.40", "prod.xyz.com", true);
+        "10.1.1.40", "prod.xyz.com", false);
     dnsHandler.setupDnsEntries(context);
     Map<String, String> cnames = dnsMock.getNewCnames();
     assertEquals(cnames.size(), 0);
@@ -91,6 +101,7 @@ public class DnsHandlerTest {
     assertTrue(delCnames.contains("test4.env.a1.org.prod.xyz.com"));
     assertTrue(delCnames.contains("test4.xyz.com"));
     assertTrue(delCnames.contains("plt4.env.a1.org.prod.xyz.com"));
+    assertTrue(delCnames.size() == 3);
     List<String> arecs = dnsMock.getDeleteArecs();
     assertTrue(arecs.size() == 1 && "plt4.env.a1.org.c2.prod.xyz.com".equals(arecs.get(0)));
   }

@@ -1,5 +1,10 @@
 package com.oneops.gslb;
 
+import com.oneops.gslb.domain.Cloud;
+import com.oneops.gslb.domain.GslbRequest;
+import com.oneops.gslb.domain.GslbResponse;
+import com.oneops.gslb.domain.InfobloxConfig;
+import com.oneops.gslb.domain.TorbitConfig;
 import java.util.List;
 
 public class Context {
