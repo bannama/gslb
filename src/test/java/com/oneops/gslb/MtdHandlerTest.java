@@ -12,11 +12,19 @@ import static org.junit.Assume.assumeTrue;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
-import com.oneops.gslb.v2.domain.MtdBaseResponse;
-import com.oneops.gslb.v2.domain.MtdHost;
-import com.oneops.gslb.v2.domain.MtdHostHealthCheck;
-import com.oneops.gslb.v2.domain.MtdHostResponse;
-import com.oneops.gslb.v2.domain.MtdTarget;
+import com.oneops.gslb.domain.Action;
+import com.oneops.gslb.domain.Cloud;
+import com.oneops.gslb.domain.DeployedLb;
+import com.oneops.gslb.domain.Fqdn;
+import com.oneops.gslb.domain.GslbRequest;
+import com.oneops.gslb.domain.GslbResponse;
+import com.oneops.gslb.domain.LbConfig;
+import com.oneops.gslb.domain.TorbitConfig;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdHost;
+import com.oneops.gslb.mtd.v2.domain.MtdHostHealthCheck;
+import com.oneops.gslb.mtd.v2.domain.MtdHostResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdTarget;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -73,7 +81,7 @@ public class MtdHandlerTest {
   @Test
   public void addWithTwoPrimaryCloudsForHttpProximity() throws Exception {
 
-    GslbRequest request = GslbRequest.builder().action(Action.ADD).
+    GslbRequest request = GslbRequest.builder().action(Action.add).
         assembly("a1").
         environment("e1").
         platform("p1").
@@ -132,7 +140,7 @@ public class MtdHandlerTest {
     List<Cloud> clouds = new ArrayList<>();
     clouds.add(Cloud.create(101, cloud1, "1", "active", null, null));
     clouds.add(Cloud.create(102, cloud2, "2", "active", null, null));
-    GslbRequest request = GslbRequest.builder().action(Action.ADD).
+    GslbRequest request = GslbRequest.builder().action(Action.add).
         assembly("a2").
         environment("e2").
         platform("p2").
@@ -178,7 +186,7 @@ public class MtdHandlerTest {
     List<DeployedLb> lbs = new ArrayList<>();
     lbs.add(DeployedLb.create("lb-101-1", "10.1.100.1"));
 
-    GslbRequest request = GslbRequest.builder().action(Action.ADD).
+    GslbRequest request = GslbRequest.builder().action(Action.add).
         assembly("a3").
         environment("e3").
         platform("p3").
@@ -211,7 +219,7 @@ public class MtdHandlerTest {
     //add another cloud with udpate action
     clouds.add(Cloud.create(102, cloud2, "1", "active", null, null));
     lbs.add(DeployedLb.create("lb-102-1", "10.2.200.2"));
-    request = GslbRequest.builder().action(Action.UPDATE).
+    request = GslbRequest.builder().action(Action.update).
         assembly("a3").
         environment("e3").
         platform("p3").
@@ -259,7 +267,7 @@ public class MtdHandlerTest {
     lbs.add(DeployedLb.create("lb-101-1", "10.1.100.1"));
     lbs.add(DeployedLb.create("lb-102-1", "10.2.200.2"));
 
-    GslbRequest request = GslbRequest.builder().action(Action.ADD).
+    GslbRequest request = GslbRequest.builder().action(Action.add).
         assembly("a4").
         environment("e4").
         platform("p4").
@@ -280,7 +288,7 @@ public class MtdHandlerTest {
     clouds.add(Cloud.create(101, cloud1, "2", "active", null, null));
     clouds.add(Cloud.create(102, cloud2, "1", "active", null, null));
 
-    request = GslbRequest.builder().action(Action.UPDATE).
+    request = GslbRequest.builder().action(Action.update).
         assembly("a4").
         environment("e4").
         platform("p4").
@@ -328,7 +336,7 @@ public class MtdHandlerTest {
     lbs.add(DeployedLb.create("lb-101-1", "10.1.100.1"));
     lbs.add(DeployedLb.create("lb-102-1", "10.2.200.2"));
 
-    GslbRequest request = GslbRequest.builder().action(Action.ADD).
+    GslbRequest request = GslbRequest.builder().action(Action.add).
         assembly("a5").
         environment("e5").
         platform("p5").
@@ -345,7 +353,7 @@ public class MtdHandlerTest {
     GslbResponse response = execute(context);
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
 
-    request = GslbRequest.builder().action(Action.DELETE).
+    request = GslbRequest.builder().action(Action.delete).
         assembly("a5").
         environment("e5").
         platform("p5").

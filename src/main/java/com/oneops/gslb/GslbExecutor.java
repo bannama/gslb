@@ -1,5 +1,7 @@
 package com.oneops.gslb;
 
+import com.oneops.gslb.domain.GslbRequest;
+import com.oneops.gslb.domain.GslbResponse;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;

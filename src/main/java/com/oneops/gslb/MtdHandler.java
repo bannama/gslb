@@ -5,23 +5,29 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.oneops.gslb.v2.domain.BaseResponse;
-import com.oneops.gslb.v2.domain.DcCloud;
-import com.oneops.gslb.v2.domain.CreateMtdBaseRequest;
-import com.oneops.gslb.v2.domain.DataCenter;
-import com.oneops.gslb.v2.domain.DataCentersResponse;
-import com.oneops.gslb.v2.domain.MtdBase;
-import com.oneops.gslb.v2.domain.MtdBaseHostRequest;
-import com.oneops.gslb.v2.domain.MtdBaseHostResponse;
-import com.oneops.gslb.v2.domain.MtdBaseRequest;
-import com.oneops.gslb.v2.domain.MtdBaseResponse;
-import com.oneops.gslb.v2.domain.MtdDeployment;
-import com.oneops.gslb.v2.domain.MtdHost;
-import com.oneops.gslb.v2.domain.MtdHostHealthCheck;
-import com.oneops.gslb.v2.domain.MtdHostResponse;
-import com.oneops.gslb.v2.domain.MtdTarget;
-import com.oneops.gslb.v2.domain.ResponseError;
-import com.oneops.gslb.v2.domain.Version;
+import com.oneops.gslb.domain.Cloud;
+import com.oneops.gslb.domain.DeployedLb;
+import com.oneops.gslb.domain.Fqdn;
+import com.oneops.gslb.domain.GslbRequest;
+import com.oneops.gslb.domain.GslbResponse;
+import com.oneops.gslb.domain.LbConfig;
+import com.oneops.gslb.mtd.v2.domain.BaseResponse;
+import com.oneops.gslb.mtd.v2.domain.DcCloud;
+import com.oneops.gslb.mtd.v2.domain.CreateMtdBaseRequest;
+import com.oneops.gslb.mtd.v2.domain.DataCenter;
+import com.oneops.gslb.mtd.v2.domain.DataCentersResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdBase;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseHostRequest;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseHostResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseRequest;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdDeployment;
+import com.oneops.gslb.mtd.v2.domain.MtdHost;
+import com.oneops.gslb.mtd.v2.domain.MtdHostHealthCheck;
+import com.oneops.gslb.mtd.v2.domain.MtdHostResponse;
+import com.oneops.gslb.mtd.v2.domain.MtdTarget;
+import com.oneops.gslb.mtd.v2.domain.ResponseError;
+import com.oneops.gslb.mtd.v2.domain.Version;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -88,10 +94,10 @@ public class MtdHandler {
       initTorbitClient(context);
       logger.info(logKey + "MtdHandler setting up Mtd for Gslb");
       switch(request.action()) {
-        case ADD:
+        case add:
           addGslb(context);
           break;
-        case DELETE:
+        case delete:
           logger.info(logKey + "handling delete rfc action");
           //delete mtd host only if it is a platform disable
           if (!request.platformEnabled()) {

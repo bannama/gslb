@@ -4,10 +4,18 @@ import static org.mockito.Mockito.mock;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
-import com.oneops.gslb.GslbRequest.Builder;
-import com.oneops.gslb.v2.domain.DcCloud;
-import com.oneops.gslb.v2.domain.MtdHostHealthCheck;
-import com.oneops.gslb.v2.domain.MtdTarget;
+import com.oneops.gslb.domain.Action;
+import com.oneops.gslb.domain.Cloud;
+import com.oneops.gslb.domain.DeployedLb;
+import com.oneops.gslb.domain.Fqdn;
+import com.oneops.gslb.domain.GslbRequest;
+import com.oneops.gslb.domain.GslbRequest.Builder;
+import com.oneops.gslb.domain.InfobloxConfig;
+import com.oneops.gslb.domain.LbConfig;
+import com.oneops.gslb.domain.TorbitConfig;
+import com.oneops.gslb.mtd.v2.domain.DcCloud;
+import com.oneops.gslb.mtd.v2.domain.MtdHostHealthCheck;
+import com.oneops.gslb.mtd.v2.domain.MtdTarget;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Assert;
@@ -92,7 +100,7 @@ public class MtdBaseTest {
   }
 
   private void addBase(Builder builder) {
-    builder.platform("plt1").assembly("combo1").environment("stg").org("org1").action(Action.ADD).platformEnabled(true);
+    builder.platform("plt1").assembly("combo1").environment("stg").org("org1").action(Action.add).platformEnabled(true);
   }
 
   private void addFqdn(Builder builder) {
