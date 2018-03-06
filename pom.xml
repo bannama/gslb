@@ -9,7 +9,9 @@
   <artifactId>gslb</artifactId>
   <packaging>jar</packaging>
   <name>gslb</name>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>1.0.2-SNAPSHOT</version>
+  <description>Library for managing gslb</description>
+  <url>https://github.com/oneops/gslb</url>
 
   <properties>
     <autovalue.version>1.5.3</autovalue.version>
@@ -25,6 +27,31 @@
     <junit.platform.version>1.0.0</junit.platform.version>
   </properties>
 
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <scm>
+    <developerConnection>scm:git:git@github.com:oneops/gslb.git</developerConnection>
+    <url>https://github.com/oneops/gslb</url>
+    <tag>release-1.0.0</tag>
+  </scm>
+
+  <issueManagement>
+    <system>github</system>
+    <url>https://github.com/oneops/gslb/issues</url>
+  </issueManagement>
+
+  <developers>
+    <developer>
+      <name>The OneOps Team</name>
+      <organization>OneOps</organization>
+      <organizationUrl>https://github.com/orgs/oneops/people</organizationUrl>
+    </developer>
+  </developers>
 
   <dependencies>
     <dependency>
