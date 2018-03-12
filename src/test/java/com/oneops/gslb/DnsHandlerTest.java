@@ -1,5 +1,6 @@
 package com.oneops.gslb;
 
+import static com.oneops.gslb.ContextFactory.getContext;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
@@ -9,16 +10,7 @@ import static org.mockito.Mockito.when;
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
 import com.oneops.gslb.domain.Action;
-import com.oneops.gslb.domain.Cloud;
-import com.oneops.gslb.domain.DeployedLb;
 import com.oneops.gslb.domain.Fqdn;
-import com.oneops.gslb.domain.GslbRequest;
-import com.oneops.gslb.domain.GslbRequest.Builder;
-import com.oneops.gslb.domain.GslbResponse;
-import com.oneops.gslb.domain.InfobloxConfig;
-import com.oneops.gslb.domain.LbConfig;
-import com.oneops.gslb.domain.TorbitConfig;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,9 +35,9 @@ public class DnsHandlerTest {
 
   @Test
   public void addCnames() {
-    Context context = context(Action.add,"Plt", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c1",
+    Context context = getContext(Action.add,"Plt", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c1",
         Fqdn.create("[test1]", "[Test1.xyz.com]", "proximity"), null,
-        "10.1.1.10", "prod.xyz.com", true);
+        "10.1.1.10", "prod.xyz.com", true, null);
     dnsHandler.setupDnsEntries(context);
     Map<String, String> cnames = dnsMock.getNewCnames();
     assertEquals(cnames.size(), 3);
@@ -58,10 +50,10 @@ public class DnsHandlerTest {
 
   @Test
   public void modifyCnames() {
-    Context context = context(Action.update, "plt", ".env.a1.org.gslb.xyz.com", "env.a1.org", "c2",
+    Context context = getContext(Action.update, "plt", ".env.a1.org.gslb.xyz.com", "env.a1.org", "c2",
         Fqdn.create("[test2]", "[test2.xyz.com]", "proximity"),
         Fqdn.create("[test1]", "[test1.xyz.com]", "proximity"),
-        "10.1.1.20", "prod.xyz.com", true);
+        "10.1.1.20", "prod.xyz.com", true, null);
     dnsHandler.setupDnsEntries(context);
     Map<String, String> cnames = dnsMock.getNewCnames();
     assertEquals(cnames.size(), 3);
@@ -77,9 +69,9 @@ public class DnsHandlerTest {
 
   @Test
   public void shutdownCloud() {
-    Context context = context(Action.delete,"plt", ".env.a1.org.gslb.xyz.com", "env.a1.org",
+    Context context = getContext(Action.delete,"plt", ".env.a1.org.gslb.xyz.com", "env.a1.org",
         "c2", Fqdn.create("[test3]", "[test3.xyz.com]", "proximity"), null,
-        "10.1.1.30", "prod.xyz.com", true);
+        "10.1.1.30", "prod.xyz.com", true, null);
     dnsHandler.setupDnsEntries(context);
     Map<String, String> cnames = dnsMock.getNewCnames();
     assertEquals(0, cnames.size());
@@ -91,9 +83,9 @@ public class DnsHandlerTest {
 
   @Test
   public void platformDisable() {
-    Context context = context(Action.delete,"Plt4", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c2",
+    Context context = getContext(Action.delete,"Plt4", ".Env.a1.org.gslb.xyz.com", "Env.a1.org", "c2",
         Fqdn.create("[test4]", "[test4.xyz.com]", "proximity"), null,
-        "10.1.1.40", "prod.xyz.com", false);
+        "10.1.1.40", "prod.xyz.com", false, null);
     dnsHandler.setupDnsEntries(context);
     Map<String, String> cnames = dnsMock.getNewCnames();
     assertEquals(cnames.size(), 0);
@@ -105,40 +97,5 @@ public class DnsHandlerTest {
     List<String> arecs = dnsMock.getDeleteArecs();
     assertTrue(arecs.size() == 1 && "plt4.env.a1.org.c2.prod.xyz.com".equals(arecs.get(0)));
   }
-
-
-  private Context context(Action action, String platform, String mtdBaseHost, String subDomian, String cloud,
-      Fqdn fqdn, Fqdn oldFqdn, String lbVip, String zone, boolean platformEnabled) {
-    Builder builder = GslbRequest.builder();
-    builder.platform(platform).assembly("combo1").environment("stg").org("org1").action(action).platformEnabled(platformEnabled);
-    builder.fqdn(fqdn);
-    builder.oldFqdn(oldFqdn);
-    builder.lbConfig(LbConfig.create("['http 80 http 80']",  "{'80':'GET /'}"));
-
-    List<DeployedLb> deployedLbs = new ArrayList<>();
-    deployedLbs.add(DeployedLb.create("lb-101-1", lbVip));
-    deployedLbs.add(DeployedLb.create("lb-101-2", "1.1.1.1"));
-    builder.deployedLbs(deployedLbs);
-
-
-    TorbitConfig torbitConfig = TorbitConfig.create("https://localhost:8443", "test-oo",
-        "test_auth", 101, "glb.xyz.com");
-    InfobloxConfig infobloxConfig = InfobloxConfig.create("https://localhost:8121",
-        "test-oo", "test_pwd", zone);
-    List<Cloud> clouds = new ArrayList<>();
-
-    clouds.add(Cloud.create(101, cloud, "1", "active", null, null));
-    clouds.add(Cloud.create(102, "dummyCloud", "1", "active", null, null));
-    builder.platformClouds(clouds);
-    builder.cloud(Cloud.create(101, cloud, "1", "active", torbitConfig, infobloxConfig));
-
-    Context context = new Context(builder.build());
-    context.setSubDomain(subDomian);
-    context.setMtdBaseHost(mtdBaseHost);
-    context.setResponse(new GslbResponse());
-    return context;
-  }
-
-
 
 }

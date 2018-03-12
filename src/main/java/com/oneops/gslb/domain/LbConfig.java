@@ -3,11 +3,14 @@ package com.oneops.gslb.domain;
 import com.google.auto.value.AutoValue;
 import com.google.gson.Gson;
 import com.google.gson.TypeAdapter;
+import javax.annotation.Nullable;
 
 @AutoValue
 public abstract class LbConfig {
 
   public abstract String listenerJson();
+
+  @Nullable
   public abstract String ecvMapJson();
 
   public static LbConfig create(String listenerJson, String ecvMapJson) {

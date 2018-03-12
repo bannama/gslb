@@ -30,6 +30,7 @@ import com.oneops.gslb.mtd.v2.domain.ResponseError;
 import com.oneops.gslb.mtd.v2.domain.Version;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -354,50 +355,58 @@ public class MtdHandler {
     LbConfig lbConfig = context.getRequest().lbConfig();
     if (lbConfig != null) {
 
-      if (StringUtils.isNotBlank(lbConfig.listenerJson()) && StringUtils.isNotBlank(lbConfig.ecvMapJson())) {
-        JsonElement element = jsonParser.parse(lbConfig.ecvMapJson());
+      if (StringUtils.isNotBlank(lbConfig.listenerJson())) {
+        logger.info(context.logKey() + "listeners " + lbConfig.listenerJson());
+        Map<Integer, String> ecvMap = ecvMapFromJson(lbConfig.ecvMapJson());
+        logger.info(context.logKey() + "ecvMap " + ecvMap);
+        JsonArray listeners = (JsonArray) jsonParser.parse(lbConfig.listenerJson());
+        listeners.forEach(s -> {
+          String listener = s.getAsString();
+          //listeners are generally in this format 'http <lb-port> http <app-port>', gslb needs to use the lb-port for health checks
+          //ecv map is configured as '<app-port> : <ecv-url>', so we need to use the app-port from listener configuration to lookup the ecv config from ecv map
+          String[] config = listener.split(" ");
+          if (config.length >= 2) {
+            String protocol = config[0];
+            int lbPort = Integer.parseInt(config[1]);
+            int ecvPort = Integer.parseInt(config[config.length - 1]);
 
-        if (element instanceof JsonObject) {
-          JsonObject root = (JsonObject) element;
-          Set<Entry<String, JsonElement>> set = root.entrySet();
-          Map<Integer, String> ecvMap = set.stream().
-              collect(Collectors.toMap(s -> Integer.parseInt(s.getKey()), s -> s.getValue().getAsString()));
-          logger.info(context.logKey() + "listeners " + lbConfig.listenerJson());
-          JsonArray listeners = (JsonArray) jsonParser.parse(lbConfig.listenerJson());
-
-          listeners.forEach(s -> {
-            String listener = s.getAsString();
-            //listeners are generally in this format 'http <lb-port> http <app-port>', gslb needs to use the lb-port for health checks
-            //ecv map is configured as '<app-port> : <ecv-url>', so we need to use the app-port from listener configuration to lookup the ecv config from ecv map
-            String[] config = listener.split(" ");
-            if (config.length >= 2) {
-              String protocol = config[0];
-              int lbPort = Integer.parseInt(config[1]);
-              int ecvPort = Integer.parseInt(config[config.length-1]);
-
+            //add health check for tcp always
+            if ("tcp".equals(protocol)) {
+              logger.info(context.logKey() + "health check configuration, protocol: " + protocol + ", port: " + lbPort);
+              hcList.add(newHealthCheck("gslb-tcp" + "-" + lbPort, "tcp", lbPort, null, null));
+            }
+            else {
               String healthConfig = ecvMap.get(ecvPort);
               if (healthConfig != null) {
                 if ((protocol.startsWith("http"))) {
                   String path = healthConfig.substring(healthConfig.indexOf(" ") + 1);
-                  logger.info(context.logKey() + "healthConfig : " + healthConfig + ", health check configuration, protocol: " + protocol + ", port: " + lbPort
-                      + ", path " + path);
+                  logger.info(context.logKey() + "healthConfig : " + healthConfig + ", health check configuration, protocol: " + protocol + ", port: "
+                      + lbPort + ", path " + path);
                   MtdHostHealthCheck healthCheck = newHealthCheck("gslb-" + protocol + "-" + lbPort,
                       protocol, lbPort, path, 200);
                   hcList.add(healthCheck);
 
-                } else if ("tcp".equals(protocol)) {
-                  logger.info(
-                      context.logKey() + "health check configuration, protocol: " + protocol + ", port: " + lbPort);
-                  hcList.add(
-                      newHealthCheck("gslb-" + protocol + "-" + lbPort, protocol, lbPort, null, null));
                 }
               }
             }
-          });
-        }
+          }
+        });
       }
     }
     return hcList;
+  }
+
+  private Map<Integer, String> ecvMapFromJson(String ecvMapJson) {
+    if (StringUtils.isNotBlank(ecvMapJson)) {
+      JsonElement element = jsonParser.parse(ecvMapJson);
+      if (element instanceof JsonObject) {
+        JsonObject root = (JsonObject) element;
+        Set<Entry<String, JsonElement>> set = root.entrySet();
+        return set.stream().
+            collect(Collectors.toMap(s -> Integer.parseInt(s.getKey()), s -> s.getValue().getAsString()));
+      }
+    }
+    return Collections.emptyMap();
   }
 
   private MtdHostHealthCheck newHealthCheck(String name, String protocol, int port, String testObjectPath, Integer expectedStatus) {
