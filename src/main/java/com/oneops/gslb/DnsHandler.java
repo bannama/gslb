@@ -212,8 +212,8 @@ public class DnsHandler {
             }
           } catch (IOException e) {
             logger.error(context.logKey() + "cname [" + alias + "] creation failed with " + e.getMessage());
-            if (e.getMessage() != null && e.getMessage().contains("IBDataConflictError")) {
-              logger.info(context.logKey() + "ignoring add cname error");
+            if (isAlreadyExistsError(alias, e)) {
+              logger.info(context.logKey() + "ignoring add cname error - record already exists");
             }
             else {
               logger.error(e);
@@ -225,6 +225,11 @@ public class DnsHandler {
         fail(context, "Failed while adding/updating cnames ", e);
       }
     }
+  }
+
+  private boolean isAlreadyExistsError(String alias, IOException e) {
+    return e.getMessage() != null &&
+        e.getMessage().contains(String.format("IBDataConflictError: IB.Data.Conflict:The record '%s' already exists.", alias));
   }
 
   private void deleteCNames(Context context, Collection<String> aliases, InfobloxClient infoBloxClient) {
