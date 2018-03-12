@@ -9,7 +9,7 @@
   <artifactId>gslb</artifactId>
   <packaging>jar</packaging>
   <name>gslb</name>
-  <version>1.0.2-SNAPSHOT</version>
+  <version>1.0.3-SNAPSHOT</version>
   <description>Library for managing gslb</description>
   <url>https://github.com/oneops/gslb</url>
 
