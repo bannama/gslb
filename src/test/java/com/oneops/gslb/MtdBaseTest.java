@@ -1,5 +1,11 @@
 package com.oneops.gslb;
 
+import static org.hamcrest.CoreMatchers.anyOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 
 import com.google.gson.Gson;
@@ -18,7 +24,6 @@ import com.oneops.gslb.mtd.v2.domain.MtdHostHealthCheck;
 import com.oneops.gslb.mtd.v2.domain.MtdTarget;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -50,37 +55,86 @@ public class MtdBaseTest {
     Context context = getContext();
     try {
       List<MtdTarget> mtdTargets = handler.getMtdTargets(context);
-      Assert.assertEquals(2, mtdTargets.size());
+      assertEquals(2, mtdTargets.size());
       MtdTarget target1 = mtdTargets.get(0);
-      Assert.assertEquals(Long.valueOf(10), new Long(target1.cloudId()));
-      Assert.assertEquals(true, target1.enabled());
-      Assert.assertEquals("1.1.1.0",target1.mtdTargetHost());
+      assertEquals(Long.valueOf(10), new Long(target1.cloudId()));
+      assertEquals(true, target1.enabled());
+      assertEquals("1.1.1.0",target1.mtdTargetHost());
 
       MtdTarget target2 = mtdTargets.get(1);
-      Assert.assertEquals(Long.valueOf(12), new Long(target2.cloudId()));
-      Assert.assertEquals(true, target2.enabled());
-      Assert.assertEquals("1.1.1.1",target2.mtdTargetHost());
+      assertEquals(Long.valueOf(12), new Long(target2.cloudId()));
+      assertEquals(true, target2.enabled());
+      assertEquals("1.1.1.1",target2.mtdTargetHost());
 
     } catch(Exception e) {
       e.printStackTrace();
-      Assert.fail(e.getMessage());
+      fail(e.getMessage());
     }
   }
 
   @Test
-  public void testMtdHealthCheck() {
-    Context context = getContext();
-    try {
-      List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(context);
-      Assert.assertEquals(1, healthChecks.size());
-      MtdHostHealthCheck healthCheck = healthChecks.get(0);
-      Assert.assertEquals(80, healthCheck.port().longValue());
-      Assert.assertEquals("http", healthCheck.protocol());
-      Assert.assertEquals("/", healthCheck.testObjectPath());
-    } catch(Exception e) {
-      e.printStackTrace();
-      Assert.fail(e.getMessage());
-    }
+  public void allTcpPortsHaveHealthChecks() {
+    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['tcp 3306 tcp 3307', 'tcp 3308 tcp 3309']", "{'3309':'port-check'}"));
+    assertThat(healthChecks.size(), is(2));
+
+    MtdHostHealthCheck healthCheck = healthChecks.get(0);
+    assertThat(healthCheck.protocol(), is("tcp"));
+    assertThat(healthCheck.port(), is(3306));
+    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
+
+    healthCheck = healthChecks.get(1);
+    assertThat(healthCheck.protocol(), is("tcp"));
+    assertThat(healthCheck.port(), is(3308));
+    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
+  }
+
+  @Test
+  public void shouldAddDefaultHealthCheckForTcpPort() {
+    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['tcp 3306 tcp 3307']", null));
+    assertThat(healthChecks.size(), is(1));
+    MtdHostHealthCheck healthCheck = healthChecks.get(0);
+    assertThat(healthCheck.protocol(), is("tcp"));
+    assertThat(healthCheck.port(), is(3306));
+    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
+
+    healthChecks = handler.getHealthChecks(getContextForHealthChecks("['tcp 3306 tcp 3307']", "[]"));
+    assertThat(healthChecks.size(), is(1));
+    healthCheck = healthChecks.get(0);
+    assertThat(healthCheck.protocol(), is("tcp"));
+    assertThat(healthCheck.port(), is(3306));
+    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
+  }
+
+  @Test
+  public void allHttpPortsWithEcvHaveHealthChecks() {
+    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['http 80 http 8080', 'http 90 http 9090']", "{'8080':'GET /'}"));
+    assertThat(healthChecks.size(), is(1));
+    MtdHostHealthCheck healthCheck = healthChecks.get(0);
+    assertThat(healthCheck.protocol(), is("http"));
+    assertThat(healthCheck.port(), is(80));
+    assertThat(healthCheck.testObjectPath(), is("/"));
+  }
+
+  @Test
+  public void testMtdHealthCheckForHttp() {
+    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['http 80 http 8080']", "{'8080':'GET /'}"));
+    assertEquals(1, healthChecks.size());
+    MtdHostHealthCheck healthCheck = healthChecks.get(0);
+    assertEquals(80, healthCheck.port().longValue());
+    assertEquals("http", healthCheck.protocol());
+    assertEquals("/", healthCheck.testObjectPath());
+  }
+
+  private Context getContextForHealthChecks(String listeners, String ecvMap) {
+    Builder builder = GslbRequest.builder();
+    addBase(builder);
+    addFqdn(builder);
+    addClouds(builder);
+    addDeployedLbs(builder);
+    builder.lbConfig(LbConfig.create(listeners, ecvMap));
+    builder.logContextId("");
+    GslbRequest request = builder.build();
+    return new Context(request);
   }
 
   private Context getContext() {
@@ -91,6 +145,7 @@ public class MtdBaseTest {
 
   private GslbRequest request() {
     Builder builder = GslbRequest.builder();
+    builder.logContextId("");
     addBase(builder);
     addFqdn(builder);
     addLbConfig(builder);
