@@ -7,7 +7,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
-import com.oneops.gslb.domain.Action;
 import com.oneops.gslb.domain.DeployedLb;
 import com.oneops.gslb.domain.Fqdn;
 import com.oneops.gslb.domain.GslbResponse;
@@ -73,31 +72,61 @@ public class DnsHandler {
     addAlias(fqdn.aliasesJson(), currentAliases, t -> (getFullAlias(t, context)));
     addAlias(fqdn.fullAliasesJson(), currentAliases, Function.identity());
 
-    if (context.getRequest().action() == Action.delete) {
-      if (!context.getRequest().platformEnabled()) {
-        logger.info(context.logKey() + "deleting all cnames as platform is getting disabled");
-        deleteCNames(context, currentAliases, infoBloxClient);
+    switch (context.getRequest().action()) {
+      case gslbstatus:
+        checkStatus(context, infoBloxClient, currentAliases);
+        break;
+      case delete:
+        handleDelete(context, infoBloxClient, currentAliases);
+        break;
+      default:
+        setupCnames(context, infoBloxClient, currentAliases);
+    }
+  }
+
+  private void checkStatus(Context context, InfobloxClient infoBloxClient, Set<String> aliases) {
+    String cname = (context.platform() + context.getMtdBaseHost()).toLowerCase();
+    logger.info(context.logKey() + "checking if cnames exist : ");
+    List<String> aliasList = aliases.stream().map(String::toLowerCase).collect(Collectors.toList());
+    logger.info(context.logKey() + "expected aliases " + aliasList + ", cname : " + cname);
+    for (String alias : aliasList) {
+      try {
+        List<CNAME> existingCnames = infoBloxClient.getCNameRec(alias);
+        if (existingCnames == null || existingCnames.isEmpty() || !cname.equals(existingCnames.get(0).canonical())) {
+          fail(context, "cname not created properly " + alias, null);
+          break;
+        }
+      } catch(Exception e) {
+        fail(context, "Exception while checking cnames ", e);
       }
-      else {
-        logger.info(context.logKey() + "platform is not disabled, deleting only cloud cname");
-      }
-      deleteCloudEntry(context, infoBloxClient);
+    }
+  }
+
+  private void handleDelete(Context context, InfobloxClient infoBloxClient, Set<String> currentAliases) {
+    if (!context.getRequest().platformEnabled()) {
+      logger.info(context.logKey() + "deleting all cnames as platform is getting disabled");
+      deleteCNames(context, currentAliases, infoBloxClient);
     }
     else {
-      Set<String> oldAliases = new HashSet<>();
-      Fqdn oldFqdn = context.getRequest().oldFqdn();
-      if (oldFqdn != null) {
-        addAlias(oldFqdn.aliasesJson(), oldAliases, t -> (getFullAlias(t, context)));
-        addAlias(oldFqdn.fullAliasesJson(), oldAliases, Function.identity());
-      }
-      List<String> aliasesToRemove = oldAliases.stream().filter(a -> !currentAliases.contains(a)).collect(Collectors.toList());
-      deleteCNames(context, aliasesToRemove, infoBloxClient);
-      Map<String, String> entriesMap = new HashMap<>();
-      addCnames(context, currentAliases, infoBloxClient, entriesMap);
-      addCloudEntry(context, infoBloxClient, entriesMap);
-      if (context.getResponse().getStatus() != Status.FAILED) {
-        updateWoResult(entriesMap, context);
-      }
+      logger.info(context.logKey() + "platform is not disabled, deleting only cloud cname");
+    }
+    deleteCloudEntry(context, infoBloxClient);
+  }
+
+  private void setupCnames(Context context, InfobloxClient infoBloxClient, Set<String> currentAliases) {
+    Set<String> oldAliases = new HashSet<>();
+    Fqdn oldFqdn = context.getRequest().oldFqdn();
+    if (oldFqdn != null) {
+      addAlias(oldFqdn.aliasesJson(), oldAliases, t -> (getFullAlias(t, context)));
+      addAlias(oldFqdn.fullAliasesJson(), oldAliases, Function.identity());
+    }
+    List<String> aliasesToRemove = oldAliases.stream().filter(a -> !currentAliases.contains(a)).collect(Collectors.toList());
+    deleteCNames(context, aliasesToRemove, infoBloxClient);
+    Map<String, String> entriesMap = new HashMap<>();
+    addCnames(context, currentAliases, infoBloxClient, entriesMap);
+    addCloudEntry(context, infoBloxClient, entriesMap);
+    if (context.getResponse().getStatus() != Status.FAILED) {
+      updateWoResult(entriesMap, context);
     }
   }
 
@@ -161,8 +190,6 @@ public class DnsHandler {
         }
       }
     }
-
-
   }
 
   private void updateWoResult(Map<String, String> entriesMap, Context context) {
