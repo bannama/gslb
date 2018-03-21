@@ -268,7 +268,7 @@ public class MtdHandler {
     }
   }
 
-  private MtdBaseHostRequest mtdBaseHostRequest(Context context) throws Exception {
+  MtdBaseHostRequest mtdBaseHostRequest(Context context) throws Exception {
     List<MtdTarget> targets = getMtdTargets(context);
     if (targets != null) {
       context.setPrimaryTargets(targets.stream().filter(MtdTarget::enabled).map(MtdTarget::mtdTargetHost).collect(Collectors.toList()));

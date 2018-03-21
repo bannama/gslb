@@ -66,7 +66,7 @@ public class DnsHandler {
 
     Set<String> currentAliases = new HashSet<>();
     Fqdn fqdn = context.getRequest().fqdn();
-    String defaultAlias = getFullAlias(context.getRequest().platform(), context);
+    String defaultAlias = getFullAlias(context.platform(), context);
     currentAliases.add(defaultAlias);
 
     addAlias(fqdn.aliasesJson(), currentAliases, t -> (getFullAlias(t, context)));

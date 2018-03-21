@@ -20,6 +20,7 @@ import com.oneops.gslb.domain.InfobloxConfig;
 import com.oneops.gslb.domain.LbConfig;
 import com.oneops.gslb.domain.TorbitConfig;
 import com.oneops.gslb.mtd.v2.domain.DcCloud;
+import com.oneops.gslb.mtd.v2.domain.MtdBaseHostRequest;
 import com.oneops.gslb.mtd.v2.domain.MtdHostHealthCheck;
 import com.oneops.gslb.mtd.v2.domain.MtdTarget;
 import java.util.ArrayList;
@@ -123,6 +124,26 @@ public class MtdBaseTest {
     assertEquals(80, healthCheck.port().longValue());
     assertEquals("http", healthCheck.protocol());
     assertEquals("/", healthCheck.testObjectPath());
+  }
+
+  @Test
+  public void shouldChangeHostNameToLowerCase() throws Exception {
+    Context context = new Context(request());
+    context.setTorbitClient(mock(TorbitClient.class));
+    Builder builder = GslbRequest.builder();
+    builder.logContextId("").
+        platform("PLT1").
+        assembly("combo1").
+        environment("STG").
+        org("org1").
+        action(Action.add).
+        platformEnabled(true);
+    addFqdn(builder);
+    addLbConfig(builder);
+    addClouds(builder);
+    addDeployedLbs(builder);
+    MtdBaseHostRequest mtdBaseHostRequest = handler.mtdBaseHostRequest(context);
+    assertThat(mtdBaseHostRequest.mtdHost().mtdHostName(), is("plt1"));
   }
 
   private Context getContextForHealthChecks(String listeners, String ecvMap) {

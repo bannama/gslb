@@ -103,7 +103,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -162,7 +162,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -208,7 +208,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -241,7 +241,7 @@ public class MtdHandlerTest {
     assertNotNull(response.getMtdDeploymentId());
 
     resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     mtdHost = resp.getBody().mtdHost();
     mtdTargets = mtdHost.mtdTargets();
@@ -310,7 +310,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -372,7 +372,7 @@ public class MtdHandlerTest {
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
 
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertThat(resp.getCode(), is(404));
 
     context.getTorbitClient().execute(context.getTorbitApi().deleteMTDBase(mtdBaseId),
@@ -384,7 +384,7 @@ public class MtdHandlerTest {
     GslbRequest request = GslbRequest.builder().action(Action.add).
         assembly("a2").
         environment("e2").
-        platform("p2").
+        platform("P2").
         org("testo2").
         platformEnabled(true).
         customSubdomain("e2.a2.testo2").
@@ -400,7 +400,7 @@ public class MtdHandlerTest {
     GslbRequest statusRequest = GslbRequest.builder().action(Action.gslbstatus).
         assembly("a2").
         environment("e2").
-        platform("p2").
+        platform("P2").
         org("testo2").
         platformEnabled(true).
         customSubdomain("e2.a2.testo2").
