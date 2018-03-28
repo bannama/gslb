@@ -39,7 +39,7 @@ public abstract class GslbRequest {
   public abstract String logContextId();
 
   public static Builder builder() {
-    return new AutoValue_GslbRequest.Builder();
+    return new AutoValue_GslbRequest.Builder().logContextId("");
   }
 
   @AutoValue.Builder

@@ -16,11 +16,12 @@ public class Context {
   private List<String> primaryTargets;
   private Long cloudId;
   private String subDomain;
-
+  private String platform;
   private GslbResponse response;
 
   public Context(GslbRequest request) {
     this.request = request;
+    this.platform = request.platform().toLowerCase();
   }
 
   public GslbRequest getRequest() {
@@ -76,7 +77,7 @@ public class Context {
   }
 
   public String platform() {
-    return request.platform();
+    return platform;
   }
 
   public TorbitConfig torbitConfig() {

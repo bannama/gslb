@@ -34,6 +34,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -99,7 +100,7 @@ public class MtdHandler {
           addGslb(context);
           break;
         case delete:
-          logger.info(logKey + "handling delete rfc action");
+          logger.info(logKey + "handling gslb delete action");
           //delete mtd host only if it is a platform disable
           if (!request.platformEnabled()) {
             logger.info(logKey + "platform getting disabled, removing mtd host");
@@ -110,12 +111,15 @@ public class MtdHandler {
             updateGslb(context);
           }
           break;
+        case gslbstatus:
+          logger.info(logKey + "handling status action on gslb");
+          checkStatus(context);
+          break;
         default:
           //update/replace actions
           updateGslb(context);
       }
     } catch(Exception e) {
-      e.printStackTrace();
       fail(context,"Exception performing " + request.action() + " GSLB ", e);
     }
   }
@@ -124,6 +128,54 @@ public class MtdHandler {
     String failMsg = (e != null) ? message + " : " + e.getMessage() : message;
     logger.error(context.logKey() + failMsg, e);
     context.setResponse(GslbResponse.failedResponse(failMsg));
+  }
+
+  private void checkStatus(Context context) {
+    try {
+      logger.info(context.logKey() + " checking mtd statusø");
+      MtdBase mtdBase = getMtdBase(context);
+      if (mtdBase == null) {
+        fail(context, "mtd base could not be read", null);
+        return;
+      }
+
+      logger.info(context.logKey() + "mtd base id : " + mtdBase.mtdBaseId());
+      TorbitApi torbit = context.getTorbitClient().getTorbit();
+      Resp<MtdHostResponse> response = execute(context, torbit.getMTDHost(mtdBase.mtdBaseId(), context.platform()), MtdHostResponse.class);
+      if (!response.isSuccessful()) {
+        fail(context, "could not get mtd host for this platform : " + response.getBody(), null);
+        return;
+      }
+
+      boolean isMatching = false;
+      MtdHostResponse hostResponse = response.getBody();
+      List<MtdTarget> actualTargets = hostResponse.mtdHost().mtdTargets();
+      logger.info(context.logKey() + "actual mtd targets " + actualTargets);
+      List<MtdTarget> expectedTargetsList = getMtdTargets(context);
+      logger.info(context.logKey() + "expected hosts " + expectedTargetsList);
+      Map<String, MtdTarget> expectedMap = expectedTargetsList.stream().collect(Collectors.toMap(MtdTarget::mtdTargetHost, Function.identity()));
+
+      if (expectedTargetsList.size() == actualTargets.size()) {
+        Optional<MtdTarget> notMatching = actualTargets.stream().
+            filter(t -> !expectedMap.containsKey(t.mtdTargetHost()) || !areTargetsSame(expectedMap.get(t.mtdTargetHost()), t)).
+            findFirst();
+        isMatching = !notMatching.isPresent();
+      }
+
+      if (isMatching) {
+        logger.info(context.logKey() + "all mtd targets matching.");
+      }
+      else {
+        fail(context, "mtd targets not matching", null);
+      }
+    } catch (Exception e) {
+      fail(context, "exception checking gslb status", e);
+    }
+  }
+
+  private boolean areTargetsSame(MtdTarget t1, MtdTarget t2) {
+     return Objects.equals(t1.mtdTargetHost(), t2.mtdTargetHost()) && Objects.equals(t1.enabled(), t2.enabled()) &&
+        Objects.equals(t1.cloudId(), t2.cloudId()) && Objects.equals(t1.dataCenterId(), t2.dataCenterId());
   }
 
   private <T extends BaseResponse> Resp<T> execute(Context context, Call<T> call, Class<T> respType) throws IOException, ExecutionException {
@@ -216,7 +268,7 @@ public class MtdHandler {
     }
   }
 
-  private MtdBaseHostRequest mtdBaseHostRequest(Context context) throws Exception {
+  MtdBaseHostRequest mtdBaseHostRequest(Context context) throws Exception {
     List<MtdTarget> targets = getMtdTargets(context);
     if (targets != null) {
       context.setPrimaryTargets(targets.stream().filter(MtdTarget::enabled).map(MtdTarget::mtdTargetHost).collect(Collectors.toList()));

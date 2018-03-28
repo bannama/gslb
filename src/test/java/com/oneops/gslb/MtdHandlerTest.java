@@ -103,7 +103,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -131,7 +131,7 @@ public class MtdHandlerTest {
     GslbResponse response = new GslbResponse();
     context.setResponse(response);
     mtdHandler.setupTorbitGdns(context);
-    return response;
+    return context.getResponse();
   }
 
 
@@ -162,7 +162,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -208,7 +208,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -241,7 +241,7 @@ public class MtdHandlerTest {
     assertNotNull(response.getMtdDeploymentId());
 
     resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     mtdHost = resp.getBody().mtdHost();
     mtdTargets = mtdHost.mtdTargets();
@@ -310,7 +310,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -372,8 +372,86 @@ public class MtdHandlerTest {
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
 
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, request.platform()), MtdHostResponse.class);
+        mtdBaseId, context.platform()), MtdHostResponse.class);
     assertThat(resp.getCode(), is(404));
+
+    context.getTorbitClient().execute(context.getTorbitApi().deleteMTDBase(mtdBaseId),
+        MtdBaseResponse.class);
+  }
+
+  @Test
+  public void statusCheckAfterAdding() throws Exception {
+    GslbRequest request = GslbRequest.builder().action(Action.add).
+        assembly("a2").
+        environment("e2").
+        platform("P2").
+        org("testo2").
+        platformEnabled(true).
+        customSubdomain("e2.a2.testo2").
+        lbConfig(httpLbConfig()).
+        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
+        deployedLbs(deployedLbs()).platformClouds(twoPrimaryClouds()).
+        fqdn(Fqdn.create(null, null, "proximity")).
+        build();
+
+    Context context = new Context(request);
+    GslbResponse response = execute(context);
+    int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
+    GslbRequest statusRequest = GslbRequest.builder().action(Action.gslbstatus).
+        assembly("a2").
+        environment("e2").
+        platform("P2").
+        org("testo2").
+        platformEnabled(true).
+        customSubdomain("e2.a2.testo2").
+        lbConfig(httpLbConfig()).
+        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
+        deployedLbs(deployedLbs()).platformClouds(twoPrimaryClouds()).
+        fqdn(Fqdn.create(null, null, "proximity")).
+        build();
+    response = execute(new Context(statusRequest));
+    assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
+
+    context.getTorbitClient().execute(context.getTorbitApi().deleteMTDBase(mtdBaseId),
+        MtdBaseResponse.class);
+  }
+
+  @Test
+  public void failForStatusCheckWithDifferentHosts() throws Exception {
+    List<DeployedLb> lbs = deployedLbs();
+    GslbRequest request = GslbRequest.builder().action(Action.add).
+        assembly("a3").
+        environment("e3").
+        platform("p3").
+        org("testo3").
+        platformEnabled(true).
+        customSubdomain("e3.a3.testo3").
+        lbConfig(httpLbConfig()).
+        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
+        deployedLbs(lbs).platformClouds(twoPrimaryClouds()).
+        fqdn(Fqdn.create(null, null, "proximity")).
+        build();
+
+    Context context = new Context(request);
+    GslbResponse response = execute(context);
+
+    int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
+    lbs.remove(0);
+    GslbRequest statusRequest = GslbRequest.builder().action(Action.gslbstatus).
+        assembly("a3").
+        environment("e3").
+        platform("p3").
+        org("testo3").
+        platformEnabled(true).
+        customSubdomain("e3.a3.testo3").
+        lbConfig(httpLbConfig()).
+        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
+        deployedLbs(lbs).platformClouds(twoPrimaryClouds()).
+        fqdn(Fqdn.create(null, null, "proximity")).
+        build();
+    context = new Context(statusRequest);
+    response = execute(context);
+    assertThat(response.getStatus(), is(Status.FAILED));
 
     context.getTorbitClient().execute(context.getTorbitApi().deleteMTDBase(mtdBaseId),
         MtdBaseResponse.class);
