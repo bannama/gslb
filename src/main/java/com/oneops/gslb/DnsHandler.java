@@ -1,93 +1,89 @@
 package com.oneops.gslb;
 
-
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
-import com.oneops.gslb.domain.DeployedLb;
-import com.oneops.gslb.domain.Fqdn;
-import com.oneops.gslb.domain.GslbResponse;
+import com.oneops.gslb.domain.CloudARecord;
+import com.oneops.gslb.domain.Gslb;
+import com.oneops.gslb.domain.GslbProvisionResponse;
 import com.oneops.gslb.domain.InfobloxConfig;
+import com.oneops.gslb.domain.Lb;
+import com.oneops.gslb.domain.ProvisionedGslb;
 import com.oneops.infoblox.InfobloxClient;
 import com.oneops.infoblox.model.a.ARec;
 import com.oneops.infoblox.model.cname.CNAME;
 import java.io.IOException;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.Map.Entry;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
-@Component
 public class DnsHandler {
 
-  @Autowired
-  JsonParser jsonParser;
-
-  @Autowired
-  Gson gson;
-
-  @Autowired
-  InfobloxClientProvider infobloxClientProvider;
+  private InfobloxClientProvider infobloxClientProvider = new InfobloxClientProvider();
 
   private static final Logger logger = Logger.getLogger(DnsHandler.class);
 
-  private InfobloxClient getInfoBloxClient(Context context) throws ExecutionException {
-    InfobloxConfig infobloxConfig = context.infobloxConfig();
+  private InfobloxClient getInfoBloxClient(InfobloxConfig infobloxConfig) throws ExecutionException {
     InfobloxClient client;
-    if (isNotBlank(infobloxConfig.host()) && isNotBlank(infobloxConfig.user())) {
+    if (infobloxConfig != null &&
+        isNotBlank(infobloxConfig.host()) && isNotBlank(infobloxConfig.user())) {
       client = infobloxClientProvider.getInfobloxClient(infobloxConfig.host(), infobloxConfig.user(), infobloxConfig.pwd());
     }
     else {
-      throw new ExecutionException("Infoblox client could not be initialized. check cloud service configuration");
+      throw new ExecutionException("Infoblox client could not be initialized. check infoblox configuration");
     }
     return client;
   }
 
-  public void setupDnsEntries(Context context) {
+  public void setupDnsEntries(Gslb gslb, ProvisionContext context) {
     logger.info(context.logKey() + "setting up cnames");
-    InfobloxClient infoBloxClient;
     try {
-      infoBloxClient = getInfoBloxClient(context);
-    } catch (ExecutionException e) {
-      fail(context, "Failed while initializing infoblox client", e);
-      return;
-    }
-
-    Set<String> currentAliases = new HashSet<>();
-    Fqdn fqdn = context.getRequest().fqdn();
-    String defaultAlias = getFullAlias(context.platform(), context);
-    currentAliases.add(defaultAlias);
-
-    addAlias(fqdn.aliasesJson(), currentAliases, t -> (getFullAlias(t, context)));
-    addAlias(fqdn.fullAliasesJson(), currentAliases, Function.identity());
-
-    switch (context.getRequest().action()) {
-      case gslbstatus:
-        checkStatus(context, infoBloxClient, currentAliases);
-        break;
-      case delete:
-        handleDelete(context, infoBloxClient, currentAliases);
-        break;
-      default:
-        setupCnames(context, infoBloxClient, currentAliases);
+      InfobloxClient infoBloxClient = getInfoBloxClient(gslb.infobloxConfig());
+      setupCnames(gslb, context, infoBloxClient);
+      deleteObsoleteEntries(gslb, context, infoBloxClient);
+    } catch (Exception e) {
+      handleException(context, e, "Failed while setting up dns entries");
     }
   }
 
-  private void checkStatus(Context context, InfobloxClient infoBloxClient, Set<String> aliases) {
-    String cname = (context.platform() + context.getMtdBaseHost()).toLowerCase();
+  public void removeDnsEntries(ProvisionedGslb gslb, Context context) {
+    try {
+      InfobloxClient infoBloxClient = getInfoBloxClient(gslb.infobloxConfig());
+      deleteCNames(context, gslb.cnames(), infoBloxClient);
+      deleteCloudEntries(context, gslb.cloudARecords(), infoBloxClient);
+    } catch(Exception e) {
+      handleException(context, e, "Failed while removing dns entries");
+    }
+  }
+
+  public void checkStatus(Gslb gslb, ProvisionContext context) {
+    try {
+      InfobloxClient infoBloxClient = getInfoBloxClient(gslb.infobloxConfig());
+      checkStatus(gslb, context, infoBloxClient);
+    } catch(Exception e) {
+      handleException(context, e, "Failed while checking status for dns entries");
+    }
+  }
+
+  private void handleException(Context context, Exception e, String message) {
+    if (context.getResponse().getStatus() != Status.FAILED) {
+      failSimple(context, message, e);
+    }
+  }
+
+  private void deleteObsoleteEntries(Gslb gslb, ProvisionContext context, InfobloxClient infobloxClient) throws Exception {
+    deleteCNames(context, gslb.obsoleteCnames(), infobloxClient);
+    deleteCloudEntries(context, gslb.obsoleteCloudARecords(), infobloxClient);
+  }
+
+  private void checkStatus(Gslb gslb, ProvisionContext context, InfobloxClient infoBloxClient) {
+    String cname = context.getApp() + context.getMtdBaseName();
     logger.info(context.logKey() + "checking if cnames exist : ");
-    List<String> aliasList = aliases.stream().map(String::toLowerCase).collect(Collectors.toList());
+    List<String> aliasList = gslb.cnames().stream().map(String::toLowerCase).collect(Collectors.toList());
     logger.info(context.logKey() + "expected aliases " + aliasList + ", cname : " + cname);
     for (String alias : aliasList) {
       try {
@@ -97,159 +93,135 @@ public class DnsHandler {
           break;
         }
       } catch(Exception e) {
-        fail(context, "Exception while checking cnames ", e);
+        failSimple(context, "Exception while checking cnames ", e);
       }
     }
   }
 
-  private void handleDelete(Context context, InfobloxClient infoBloxClient, Set<String> currentAliases) {
-    if (!context.getRequest().platformEnabled()) {
-      logger.info(context.logKey() + "deleting all cnames as platform is getting disabled");
-      deleteCNames(context, currentAliases, infoBloxClient);
-    }
-    else {
-      logger.info(context.logKey() + "platform is not disabled, deleting only cloud cname");
-    }
-    deleteCloudEntry(context, infoBloxClient);
-  }
-
-  private void setupCnames(Context context, InfobloxClient infoBloxClient, Set<String> currentAliases) {
-    Set<String> oldAliases = new HashSet<>();
-    Fqdn oldFqdn = context.getRequest().oldFqdn();
-    if (oldFqdn != null) {
-      addAlias(oldFqdn.aliasesJson(), oldAliases, t -> (getFullAlias(t, context)));
-      addAlias(oldFqdn.fullAliasesJson(), oldAliases, Function.identity());
-    }
-    List<String> aliasesToRemove = oldAliases.stream().filter(a -> !currentAliases.contains(a)).collect(Collectors.toList());
-    deleteCNames(context, aliasesToRemove, infoBloxClient);
+  private void setupCnames(Gslb gslb, ProvisionContext context, InfobloxClient infoBloxClient) throws Exception {
     Map<String, String> entriesMap = new HashMap<>();
-    addCnames(context, currentAliases, infoBloxClient, entriesMap);
-    addCloudEntry(context, infoBloxClient, entriesMap);
-    if (context.getResponse().getStatus() != Status.FAILED) {
-      updateWoResult(entriesMap, context);
-    }
+    addCnames(gslb, context, infoBloxClient, entriesMap);
+    addCloudEntry(gslb, context, infoBloxClient, entriesMap);
+    updateWoResult(entriesMap, context);
   }
 
-  private void fail(Context context, String message, Exception e) {
+  private void fail(Context context, String message, Exception e) throws Exception {
+    failSimple(context, message, e);
+    if (e == null) {
+      e = new ExecutionException(message);
+    }
+    throw e;
+  }
+
+  private void failSimple(Context context, String message, Exception e) {
     String failMsg = (e != null) ? message + " : " + e.getMessage() : message;
     logger.error(context.logKey() + failMsg, e);
-    context.setResponse(GslbResponse.failedResponse(failMsg));
+    context.failedResponseWithMessage(failMsg);
   }
 
+  private void addCloudEntry(Gslb gslb, ProvisionContext context, InfobloxClient infobloxClient,
+      Map<String, String> entriesMap) throws Exception {
+    if (gslb.cloudARecords() != null) {
+      Map<String, Lb> cloudToLbMap = gslb.lbs().stream().collect(Collectors.toMap(c -> c.cloud(), Function.identity()));
+      Map<String, String> cloudEntries = new HashMap<>();
+      for (CloudARecord cloudARecord : gslb.cloudARecords()) {
 
-  private void deleteCloudEntry(Context context, InfobloxClient infobloxClient) {
-    String cloudEntry = getCloudDnsEntry(context);
-    logger.info(context.logKey() + "deleting cloud dns entry " + cloudEntry);
-    try {
-      infobloxClient.deleteARec(cloudEntry);
-    } catch(Exception e) {
-      fail(context,"Exception while deleting cloud dns entry ", e);
+        if (cloudToLbMap.containsKey(cloudARecord.cloud())) {
+          Lb lb = cloudToLbMap.get(cloudARecord.cloud());
+          if (lb != null && StringUtils.isNotBlank(lb.vip())) {
+            cloudEntries.put(cloudARecord.aRecord(), lb.vip());
+          }
+        }
+      }
+      for (Entry<String, String> entry : cloudEntries.entrySet()) {
+        addCloudARecord(context, entry.getKey(), entry.getValue(), infobloxClient);
+      }
+      entriesMap.putAll(cloudEntries);
     }
   }
 
-  private Long getCloudIdFromLbName(DeployedLb deployedLb) {
-    String[] elements = deployedLb.name().split("-");
-    return Long.parseLong(elements[elements.length-2]);
-  }
-
-  private void addCloudEntry(Context context, InfobloxClient infobloxClient, Map<String, String> entriesMap) {
-    String cloudEntry = getCloudDnsEntry(context);
-    Optional<DeployedLb> opt = context.getRequest().deployedLbs().stream().
-        filter(lb -> getCloudIdFromLbName(lb) == context.getRequest().cloud().id()).findFirst();
-    if (opt.isPresent()) {
-      String lbVip = opt.get().dnsRecord();
+  private void addCloudARecord(ProvisionContext context, String cloudEntry, String lbVip, InfobloxClient infobloxClient) throws Exception {
+    if (isNotBlank(lbVip)) {
       logger.info(context.logKey() + "cloud dns entry " + cloudEntry + " lbVip " + lbVip);
-
-      if (isNotBlank(lbVip)) {
-        entriesMap.put(cloudEntry, lbVip);
-        try {
-          boolean alreadyExists = false;
-          List<ARec> records = infobloxClient.getARec(cloudEntry);
-          if (records != null && records.size() == 1) {
-            if (lbVip.equals(records.get(0).ipv4Addr())) {
-              logger.info(context.logKey() + "cloud dns entry is already set, not doing anything");
-              return;
-            }
-            else {
-              alreadyExists = true;
-              logger.info(context.logKey() + "cloud dns entry already exists, but not matching");
-            }
+      try {
+        boolean alreadyExists = false;
+        List<ARec> records = infobloxClient.getARec(cloudEntry);
+        if (records != null && records.size() == 1) {
+          if (lbVip.equals(records.get(0).ipv4Addr())) {
+            logger.info(context.logKey() + "cloud dns entry is already set, not doing anything");
+            return;
           }
-
-          if (alreadyExists) {
-            logger.info(context.logKey() + "cloud dns entry: " + cloudEntry + ", deleting the current entry and recreating it");
-            List<String> list = infobloxClient.deleteARec(cloudEntry);
-            logger.info(context.logKey() + "infoblox deleted cloud entries count " + list.size());
+          else {
+            alreadyExists = true;
+            logger.info(context.logKey() + "cloud dns entry already exists, but not matching");
           }
-          logger.info(context.logKey() + "creating cloud dns entry " + cloudEntry);
-          ARec aRecord = infobloxClient.createARec(cloudEntry, lbVip);
-          logger.info(context.logKey() + "arecord created " + aRecord);
-
-        } catch (IOException e) {
-          fail(context,"Exception while setting up cloud dns entry ", e);
         }
+
+        if (alreadyExists) {
+          logger.info(context.logKey() + "cloud dns entry: " + cloudEntry + ", deleting the current entry and recreating it");
+          List<String> list = infobloxClient.deleteARec(cloudEntry);
+          logger.info(context.logKey() + "infoblox deleted cloud entries count " + list.size());
+        }
+        logger.info(context.logKey() + "creating cloud dns entry " + cloudEntry);
+        ARec aRecord = infobloxClient.createARec(cloudEntry, lbVip);
+        logger.info(context.logKey() + "arecord created " + aRecord);
+
+      } catch (IOException e) {
+        fail(context,"Exception while setting up cloud dns entry ", e);
       }
     }
   }
 
-  private void updateWoResult(Map<String, String> entriesMap, Context context) {
-    GslbResponse response = context.getResponse();
+  private void updateWoResult(Map<String, String> entriesMap, ProvisionContext context) {
+    GslbProvisionResponse response = context.getProvisioningResponse();
     response.setDnsEntries(entriesMap);
-    String domainName = context.platform() + context.getMtdBaseHost();
+    String domainName = context.getApp() + context.getMtdBaseName();
     entriesMap.put(domainName, context.getPrimaryTargets() != null ? context.getPrimaryTargets().toString() : "");
   }
 
-  private String getFullAlias(String alias, Context context) {
-    return String.join(".", alias, context.getSubDomain(), context.infobloxConfig().zone());
-  }
-
-  private String getCloudDnsEntry(Context context) {
-    return String.join(".", context.platform(), context.getSubDomain(),
-        context.cloud().name(), context.infobloxConfig().zone()).toLowerCase();
-  }
-
-  private void addCnames(Context context, Collection<String> aliases,
-      InfobloxClient infoBloxClient, Map<String, String> entriesMap) {
-    String cname = (context.platform() + context.getMtdBaseHost()).toLowerCase();
-    List<String> aliasList = aliases.stream().map(String::toLowerCase).collect(Collectors.toList());
-    logger.info(context.logKey() + "aliases to be added/updated " + aliasList + ", cname : " + cname);
-    for (String alias : aliasList) {
-      try {
-        entriesMap.put(alias, cname);
-        List<CNAME> existingCnames = infoBloxClient.getCNameRec(alias);
-        if (existingCnames != null && !existingCnames.isEmpty()) {
-          if (cname.equals(existingCnames.get(0).canonical())) {
-            //cname matches, no need to do anything
-            logger.info(context.logKey() + "cname already exists, no change needed " + alias);
+  private void addCnames(Gslb gslb, ProvisionContext context, InfobloxClient infoBloxClient, Map<String, String> entriesMap) throws Exception {
+    List<String> aliases = gslb.cnames();
+    if (aliases != null) {
+      String cname = context.getApp() + context.getMtdBaseName();
+      List<String> aliasList = aliases.stream().map(String::toLowerCase).collect(Collectors.toList());
+      logger.info(context.logKey() + "aliases to be added/updated " + aliasList + ", cname : " + cname);
+      for (String alias : aliasList) {
+        try {
+          entriesMap.put(alias, cname);
+          List<CNAME> existingCnames = infoBloxClient.getCNameRec(alias);
+          if (existingCnames != null && !existingCnames.isEmpty()) {
+            if (cname.equals(existingCnames.get(0).canonical())) {
+              //cname matches, no need to do anything
+              logger.info(context.logKey() + "cname already exists, no change needed " + alias);
+            }
+            else {
+              fail(context, "alias " + alias + " exists already with a different cname", null);
+            }
           }
           else {
-            fail(context, "alias " + alias + " exists already with a different cname", null);
-          }
-          continue;
-        }
-        else {
-          logger.info(context.logKey() + "cname not found, trying to add " + alias);
-          try {
-            CNAME newCname = infoBloxClient.createCNameRec(alias, cname);
-            if (newCname == null || !cname.equals(newCname.canonical())) {
-              fail(context, "Failed to create cname ", null);
-            }
-            else {
-              logger.info(context.logKey() + "cname added successfully " + alias);
-            }
-          } catch (IOException e) {
-            logger.error(context.logKey() + "cname [" + alias + "] creation failed with " + e.getMessage());
-            if (isAlreadyExistsError(alias, e)) {
-              logger.info(context.logKey() + "ignoring add cname error - record already exists");
-            }
-            else {
-              logger.error(e);
-              fail(context, "Failed while adding cname " +  cname, e);
+            logger.info(context.logKey() + "cname not found, trying to add " + alias);
+            try {
+              CNAME newCname = infoBloxClient.createCNameRec(alias, cname);
+              if (newCname == null || !cname.equals(newCname.canonical())) {
+                fail(context, "Failed to create cname ", null);
+              }
+              else {
+                logger.info(context.logKey() + "cname added successfully " + alias);
+              }
+            } catch (IOException e) {
+              logger.error(context.logKey() + "cname [" + alias + "] creation failed with " + e.getMessage());
+              if (isAlreadyExistsError(alias, e)) {
+                logger.info(context.logKey() + "ignoring add cname error - record already exists");
+              }
+              else {
+                logger.error(e);
+                fail(context, "Failed while adding cname " +  cname, e);
+              }
             }
           }
+        } catch (IOException e) {
+          fail(context, "Failed while adding/updating cnames ", e);
         }
-      } catch (IOException e) {
-        fail(context, "Failed while adding/updating cnames ", e);
       }
     }
   }
@@ -259,34 +231,46 @@ public class DnsHandler {
         e.getMessage().contains(String.format("IBDataConflictError: IB.Data.Conflict:The record '%s' already exists.", alias));
   }
 
-  private void deleteCNames(Context context, Collection<String> aliases, InfobloxClient infoBloxClient) {
-    List<String> aliasList = aliases.stream().map(String::toLowerCase).collect(Collectors.toList());
-    logger.info(context.logKey() + "delete cnames " + aliasList);
-    aliasList.stream().forEach(
-        a -> {
-          try {
-            infoBloxClient.deleteCNameRec(a);
-          } catch(Exception e) {
-            if (e.getCause() != null && e.getCause().getMessage() != null
-                && e.getCause().getMessage().contains("AdmConDataNotFoundError")) {
-              logger.info(context.logKey() + "delete failed with no data found for " + a + ", ignore and continue");
-            }
-            else {
-              fail(context, "Failed while deleting cname " + a, e);
-            }
-
+  private void deleteCNames(Context context, List<String> aliases, InfobloxClient infoBloxClient) throws Exception {
+    if (aliases != null) {
+      List<String> aliasList = aliases.stream().map(String::toLowerCase).collect(Collectors.toList());
+      logger.info(context.logKey() + "delete cnames " + aliasList);
+      for (String alias : aliasList) {
+        try {
+          infoBloxClient.deleteCNameRec(alias);
+        } catch(Exception e) {
+          if (e.getCause() != null && e.getCause().getMessage() != null
+              && e.getCause().getMessage().contains("AdmConDataNotFoundError")) {
+            logger.info(context.logKey() + "delete failed with no data found for " + alias + ", ignore and continue");
+          }
+          else {
+            fail(context, "Failed while deleting cname " + alias, e);
           }
         }
-    );
-  }
-
-  private void addAlias(String attrValue, Set<String> aliases, Function<String, String> mapper) {
-    if (isNotBlank(attrValue)) {
-      JsonArray aliasArray = (JsonArray) jsonParser.parse(attrValue);
-      for (JsonElement alias : aliasArray) {
-        aliases.add(mapper.apply(alias.getAsString()));
       }
     }
+  }
+
+  private void deleteCloudEntries(Context context, List<CloudARecord> aRecords, InfobloxClient infobloxClient)
+      throws Exception {
+    if (aRecords != null) {
+      for (CloudARecord aRecord : aRecords) {
+        logger.info(context.logKey() + "deleting cloud dns entry " + aRecord.aRecord());
+        try {
+          infobloxClient.deleteARec(aRecord.aRecord());
+        } catch(Exception e) {
+          fail(context,"Exception while deleting cloud dns entry ", e);
+        }
+      }
+    }
+  }
+
+  public InfobloxClientProvider getInfobloxClientProvider() {
+    return infobloxClientProvider;
+  }
+
+  public void setInfobloxClientProvider(InfobloxClientProvider infobloxClientProvider) {
+    this.infobloxClientProvider = infobloxClientProvider;
   }
 
 }

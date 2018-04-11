@@ -17,7 +17,6 @@
     <autovalue.version>1.5.3</autovalue.version>
     <autovalue-gson.version>0.4.5</autovalue-gson.version>
     <jsr305.version>3.0.2</jsr305.version>
-    <spring.version>4.1.5.RELEASE</spring.version>
     <junit.version>4.11</junit.version>
     <infoblox-java.version>1.0.1</infoblox-java.version>
     <retrofit.version>2.1.0</retrofit.version>
@@ -95,11 +94,6 @@
       <groupId>com.squareup.retrofit2</groupId>
       <artifactId>converter-gson</artifactId>
       <version>${retrofit.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-context</artifactId>
-      <version>${spring.version}</version>
     </dependency>
     <dependency>
       <groupId>com.oneops</groupId>
