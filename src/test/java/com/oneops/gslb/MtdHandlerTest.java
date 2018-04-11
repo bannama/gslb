@@ -1,6 +1,5 @@
 package com.oneops.gslb;
 
-
 import static org.hamcrest.CoreMatchers.anyOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.nullValue;
@@ -10,15 +9,14 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonParser;
-import com.oneops.gslb.domain.Action;
-import com.oneops.gslb.domain.Cloud;
-import com.oneops.gslb.domain.DeployedLb;
-import com.oneops.gslb.domain.Fqdn;
-import com.oneops.gslb.domain.GslbRequest;
+import com.oneops.gslb.domain.Distribution;
+import com.oneops.gslb.domain.Gslb;
+import com.oneops.gslb.domain.GslbProvisionResponse;
 import com.oneops.gslb.domain.GslbResponse;
-import com.oneops.gslb.domain.LbConfig;
+import com.oneops.gslb.domain.HealthCheck;
+import com.oneops.gslb.domain.Lb;
+import com.oneops.gslb.domain.Protocol;
+import com.oneops.gslb.domain.ProvisionedGslb;
 import com.oneops.gslb.domain.TorbitConfig;
 import com.oneops.gslb.mtd.v2.domain.MtdBaseResponse;
 import com.oneops.gslb.mtd.v2.domain.MtdHost;
@@ -42,15 +40,9 @@ public class MtdHandlerTest {
   @Before
   public void setup() {
     config = getTorbitConfig();
+    mtdHandler = new MtdHandler();
     List<String> clouds = getClouds();
     assumeTrue(config != null && clouds.size() >= 2);
-    mtdHandler = new MtdHandler();
-    mtdHandler.timeOut = "2s";
-    mtdHandler.retryDelay = "30s";
-    mtdHandler.interval = "5s";
-    mtdHandler.failureCountToMarkDown = 3;
-    mtdHandler.gson = new Gson();
-    mtdHandler.jsonParser = new JsonParser();
     cloud1 = clouds.get(0);
     cloud2 = clouds.get(1);
   }
@@ -81,21 +73,17 @@ public class MtdHandlerTest {
   @Test
   public void addWithTwoPrimaryCloudsForHttpProximity() throws Exception {
 
-    GslbRequest request = GslbRequest.builder().action(Action.add).
-        assembly("a1").
-        environment("e1").
-        platform("p1").
-        org("testo1").
-        platformEnabled(true).
-        customSubdomain("e1.a1.testo1").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(deployedLbs()).platformClouds(twoPrimaryClouds()).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
+    Gslb gslb = Gslb.builder()
+        .app("p1")
+        .subdomain("e1.a1.testo1")
+        .lbs(lbsTwoPrimary())
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
 
-    Context context = new Context(request);
-    GslbResponse response = execute(context);
+    ProvisionContext context = new ProvisionContext();
+    GslbProvisionResponse response = executeSetup(gslb, context);
 
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
     assertNotNull(response.getMtdBaseId());
@@ -103,7 +91,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, context.platform()), MtdHostResponse.class);
+        mtdBaseId, gslb.app()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -127,34 +115,53 @@ public class MtdHandlerTest {
         MtdBaseResponse.class);
   }
 
-  private GslbResponse execute(Context context) {
-    GslbResponse response = new GslbResponse();
-    context.setResponse(response);
-    mtdHandler.setupTorbitGdns(context);
-    return context.getResponse();
+  private GslbProvisionResponse executeSetup(Gslb gslb, ProvisionContext context) {
+    GslbProvisionResponse response = new GslbProvisionResponse();
+    context.setProvisioningResponse(response);
+    context.logKey(gslb.logContextId());
+    mtdHandler.setupTorbitGslb(gslb, context);
+    return context.getProvisioningResponse();
+  }
+
+  private GslbProvisionResponse executeStatus(Gslb gslb, ProvisionContext context) {
+    GslbProvisionResponse response = new GslbProvisionResponse();
+    context.setProvisioningResponse(response);
+    context.logKey(gslb.logContextId());
+    mtdHandler.checkStatus(gslb, context);
+    return context.getProvisioningResponse();
+  }
+
+  private List<Lb> lbsTwoPrimary() {
+    List<Lb> lbs = new ArrayList<>();
+    lbs.add(Lb.create(cloud1,"10.1.100.1", true));
+    lbs.add(Lb.create(cloud2,"10.2.200.2", true));
+    return lbs;
+  }
+
+  private List<Lb> lbsOnePrimaryOneSecondary() {
+    List<Lb> lbs = new ArrayList<>();
+    lbs.add(Lb.create(cloud1,"10.1.100.1", true));
+    lbs.add(Lb.create(cloud2,"10.2.200.2", false));
+    return lbs;
+  }
+
+  private HealthCheck healthCheck() {
+    return HealthCheck.builder().protocol(Protocol.HTTP).port(80).path("/").build();
   }
 
 
   @Test
   public void addWithOnePrimarySecondaryForHttpProximity() throws Exception {
-    List<Cloud> clouds = new ArrayList<>();
-    clouds.add(Cloud.create(101, cloud1, "1", "active", null, null));
-    clouds.add(Cloud.create(102, cloud2, "2", "active", null, null));
-    GslbRequest request = GslbRequest.builder().action(Action.add).
-        assembly("a2").
-        environment("e2").
-        platform("p2").
-        org("testo2").
-        platformEnabled(true).
-        customSubdomain("e2.a2.testo2").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(deployedLbs()).platformClouds(clouds).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-
-    Context context = new Context(request);
-    GslbResponse response = execute(context);
+    Gslb gslb = Gslb.builder()
+        .app("p2")
+        .subdomain("e2.a2.testo2")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbsOnePrimaryOneSecondary())
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
+    ProvisionContext context = new ProvisionContext();
+    GslbProvisionResponse response = executeSetup(gslb, context);
 
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
     assertNotNull(response.getMtdBaseId());
@@ -162,7 +169,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, context.platform()), MtdHostResponse.class);
+        mtdBaseId, gslb.app()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -178,29 +185,22 @@ public class MtdHandlerTest {
         MtdBaseResponse.class);
   }
 
+
   @Test
-  public void updateActionWithNewPrimaryCloud() throws Exception {
-    List<Cloud> clouds = new ArrayList<>();
-    clouds.add(Cloud.create(101, cloud1, "1", "active", null, null));
+  public void updateWithNewPrimaryCloud() throws Exception {
+    List<Lb> lbs = new ArrayList<>();
+    lbs.add(Lb.create(cloud1, "10.1.100.1", true));
+    Gslb gslb = Gslb.builder()
+        .app("p3")
+        .subdomain("e3.a3.testo3")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbs)
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
 
-    List<DeployedLb> lbs = new ArrayList<>();
-    lbs.add(DeployedLb.create("lb-101-1", "10.1.100.1"));
-
-    GslbRequest request = GslbRequest.builder().action(Action.add).
-        assembly("a3").
-        environment("e3").
-        platform("p3").
-        org("testo3").
-        platformEnabled(true).
-        customSubdomain("e3.a3.testo3").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(lbs).platformClouds(clouds).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-
-    Context context = new Context(request);
-    GslbResponse response = execute(context);
+    ProvisionContext context = new ProvisionContext();
+    GslbProvisionResponse response = executeSetup(gslb, context);
 
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
     assertNotNull(response.getMtdBaseId());
@@ -208,7 +208,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, context.platform()), MtdHostResponse.class);
+        mtdBaseId, gslb.app()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -216,32 +216,26 @@ public class MtdHandlerTest {
     MtdTarget target1 = mtdTargets.get(0);
     assertThat(target1.mtdTargetHost(), is("10.1.100.1"));
 
-    //add another cloud with udpate action
-    clouds.add(Cloud.create(102, cloud2, "1", "active", null, null));
-    lbs.add(DeployedLb.create("lb-102-1", "10.2.200.2"));
-    request = GslbRequest.builder().action(Action.update).
-        assembly("a3").
-        environment("e3").
-        platform("p3").
-        org("testo3").
-        platformEnabled(true).
-        customSubdomain("e3.a3.testo3").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(lbs).platformClouds(clouds).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
+    //add another cloud
+    lbs.add(Lb.create(cloud2, "10.2.200.2", true));
+    gslb = Gslb.builder()
+        .app("p3")
+        .subdomain("e3.a3.testo3")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbs)
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
 
-    context = new Context(request);
-    response = execute(context);
-
+    context = new ProvisionContext();
+    response = executeSetup(gslb, context);
 
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
     assertNotNull(response.getMtdBaseId());
     assertNotNull(response.getMtdDeploymentId());
 
     resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, context.platform()), MtdHostResponse.class);
+        mtdBaseId, gslb.app()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     mtdHost = resp.getBody().mtdHost();
     mtdTargets = mtdHost.mtdTargets();
@@ -257,52 +251,37 @@ public class MtdHandlerTest {
         MtdBaseResponse.class);
   }
 
+
   @Test
   public void updateActionWithCloudFailover() throws Exception {
-    List<Cloud> clouds = new ArrayList<>();
-    clouds.add(Cloud.create(101, cloud1, "1", "active", null, null));
-    clouds.add(Cloud.create(102, cloud2, "2", "active", null, null));
-
-    List<DeployedLb> lbs = new ArrayList<>();
-    lbs.add(DeployedLb.create("lb-101-1", "10.1.100.1"));
-    lbs.add(DeployedLb.create("lb-102-1", "10.2.200.2"));
-
-    GslbRequest request = GslbRequest.builder().action(Action.add).
-        assembly("a4").
-        environment("e4").
-        platform("p4").
-        org("testo4").
-        platformEnabled(true).
-        customSubdomain("e4.a4.testo4").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(lbs).platformClouds(clouds).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-
-    Context context = new Context(request);
-    GslbResponse response = execute(context);
+    List<Lb> lbs = new ArrayList<>();
+    lbs.add(Lb.create(cloud1, "10.1.100.1", true));
+    lbs.add(Lb.create(cloud2, "10.2.200.2", false));
+    Gslb gslb = Gslb.builder()
+        .app("p4")
+        .subdomain("e4.a4.testo4")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbs)
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
+    ProvisionContext context = new ProvisionContext();
+    GslbProvisionResponse response = executeSetup(gslb, context);
 
     //add another cloud with primary secondary failover
-    clouds.clear();
-    clouds.add(Cloud.create(101, cloud1, "2", "active", null, null));
-    clouds.add(Cloud.create(102, cloud2, "1", "active", null, null));
-
-    request = GslbRequest.builder().action(Action.update).
-        assembly("a4").
-        environment("e4").
-        platform("p4").
-        org("testo4").
-        platformEnabled(true).
-        customSubdomain("e4.a4.testo4").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "2", "active", config, null)).
-        deployedLbs(lbs).platformClouds(clouds).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-
-    context = new Context(request);
-    response = execute(context);
+    lbs.clear();
+    lbs.add(Lb.create(cloud2, "10.2.200.2", true));
+    lbs.add(Lb.create(cloud1, "10.1.100.1", false));
+    gslb = Gslb.builder()
+        .app("p4")
+        .subdomain("e4.a4.testo4")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbs)
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
+    context = new ProvisionContext();
+    response = executeSetup(gslb, context);
 
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
     assertNotNull(response.getMtdBaseId());
@@ -310,7 +289,7 @@ public class MtdHandlerTest {
 
     int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, context.platform()), MtdHostResponse.class);
+        mtdBaseId, gslb.app()), MtdHostResponse.class);
     assertTrue(resp.isSuccessful());
     MtdHost mtdHost = resp.getBody().mtdHost();
     List<MtdTarget> mtdTargets = mtdHost.mtdTargets();
@@ -326,153 +305,136 @@ public class MtdHandlerTest {
         MtdBaseResponse.class);
   }
 
+
   @Test
   public void platformDisable() throws Exception {
-    List<Cloud> clouds = new ArrayList<>();
-    clouds.add(Cloud.create(101, cloud1, "1", "active", null, null));
-    clouds.add(Cloud.create(102, cloud2, "2", "active", null, null));
+    List<Lb> lbs = new ArrayList<>();
+    lbs.add(Lb.create(cloud1, "10.1.100.1", true));
+    lbs.add(Lb.create(cloud2, "10.2.200.2", true));
+    Gslb gslb = Gslb.builder()
+        .app("p5")
+        .subdomain("e5.a5.testo5")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbs)
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
+    ProvisionContext provisionContext = new ProvisionContext();
+    GslbProvisionResponse provisionResponse = executeSetup(gslb, provisionContext);
 
-    List<DeployedLb> lbs = new ArrayList<>();
-    lbs.add(DeployedLb.create("lb-101-1", "10.1.100.1"));
-    lbs.add(DeployedLb.create("lb-102-1", "10.2.200.2"));
+    int mtdBaseId = Integer.parseInt(provisionResponse.getMtdBaseId());
 
-    GslbRequest request = GslbRequest.builder().action(Action.add).
-        assembly("a5").
-        environment("e5").
-        platform("p5").
-        org("testo5").
-        platformEnabled(true).
-        customSubdomain("e5.a5.testo5").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(lbs).platformClouds(clouds).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-
-    Context context = new Context(request);
-    GslbResponse response = execute(context);
-    int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
-
-    request = GslbRequest.builder().action(Action.delete).
-        assembly("a5").
-        environment("e5").
-        platform("p5").
-        org("testo5").
-        platformEnabled(false).
-        customSubdomain("e5.a5.testo5").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(lbs).platformClouds(clouds).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-
-    context = new Context(request);
-    response = execute(context);
+    ProvisionedGslb provisionedGslb = ProvisionedGslb.builder()
+        .app("p5")
+        .subdomain("e5.a5.testo5")
+        .torbitConfig(config)
+        .build();
+    Context context = new Context();
+    context.setResponse(new GslbResponse());
+    context.logKey(gslb.logContextId());
+    mtdHandler.deleteGslb(provisionedGslb, context);
+    GslbResponse response = context.getResponse();
 
     assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
 
     Resp<MtdHostResponse> resp = context.getTorbitClient().execute(context.getTorbitApi().getMTDHost(
-        mtdBaseId, context.platform()), MtdHostResponse.class);
+        mtdBaseId, gslb.app()), MtdHostResponse.class);
     assertThat(resp.getCode(), is(404));
 
     context.getTorbitClient().execute(context.getTorbitApi().deleteMTDBase(mtdBaseId),
         MtdBaseResponse.class);
   }
 
+
   @Test
   public void statusCheckAfterAdding() throws Exception {
-    GslbRequest request = GslbRequest.builder().action(Action.add).
-        assembly("a2").
-        environment("e2").
-        platform("P2").
-        org("testo2").
-        platformEnabled(true).
-        customSubdomain("e2.a2.testo2").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(deployedLbs()).platformClouds(twoPrimaryClouds()).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
+    Gslb gslb = Gslb.builder()
+        .app("P2")
+        .subdomain("e2.a2.testo2")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbsTwoPrimary())
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
+    ProvisionContext provisionContext = new ProvisionContext();
+    GslbProvisionResponse provisionResponse = executeSetup(gslb, provisionContext);
+    int mtdBaseId = Integer.parseInt(provisionResponse.getMtdBaseId());
 
-    Context context = new Context(request);
-    GslbResponse response = execute(context);
-    int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
-    GslbRequest statusRequest = GslbRequest.builder().action(Action.gslbstatus).
-        assembly("a2").
-        environment("e2").
-        platform("P2").
-        org("testo2").
-        platformEnabled(true).
-        customSubdomain("e2.a2.testo2").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(deployedLbs()).platformClouds(twoPrimaryClouds()).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-    response = execute(new Context(statusRequest));
-    assertThat(response.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
+    gslb = Gslb.builder()
+        .app("P2")
+        .subdomain("e2.a2.testo2")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbsTwoPrimary())
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
 
-    context.getTorbitClient().execute(context.getTorbitApi().deleteMTDBase(mtdBaseId),
+    provisionContext = new ProvisionContext();
+    provisionResponse = executeStatus(gslb, provisionContext);
+    assertThat(provisionResponse.getStatus(), anyOf(nullValue(), is(Status.SUCCESS)));
+
+    provisionContext.getTorbitClient().execute(provisionContext.getTorbitApi().deleteMTDBase(mtdBaseId),
         MtdBaseResponse.class);
   }
 
   @Test
   public void failForStatusCheckWithDifferentHosts() throws Exception {
-    List<DeployedLb> lbs = deployedLbs();
-    GslbRequest request = GslbRequest.builder().action(Action.add).
-        assembly("a3").
-        environment("e3").
-        platform("p3").
-        org("testo3").
-        platformEnabled(true).
-        customSubdomain("e3.a3.testo3").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(lbs).platformClouds(twoPrimaryClouds()).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
+    List<Lb> lbs = lbsTwoPrimary();
+    Gslb gslb = Gslb.builder()
+        .app("p3")
+        .subdomain("e3.a3.testo3")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbs)
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
+    ProvisionContext provisionContext = new ProvisionContext();
+    GslbProvisionResponse provisionResponse = executeSetup(gslb, provisionContext);
+    int mtdBaseId = Integer.parseInt(provisionResponse.getMtdBaseId());
 
-    Context context = new Context(request);
-    GslbResponse response = execute(context);
-
-    int mtdBaseId = Integer.parseInt(response.getMtdBaseId());
     lbs.remove(0);
-    GslbRequest statusRequest = GslbRequest.builder().action(Action.gslbstatus).
-        assembly("a3").
-        environment("e3").
-        platform("p3").
-        org("testo3").
-        platformEnabled(true).
-        customSubdomain("e3.a3.testo3").
-        lbConfig(httpLbConfig()).
-        cloud(Cloud.create(101, cloud1, "1", "active", config, null)).
-        deployedLbs(lbs).platformClouds(twoPrimaryClouds()).
-        fqdn(Fqdn.create(null, null, "proximity")).
-        build();
-    context = new Context(statusRequest);
-    response = execute(context);
-    assertThat(response.getStatus(), is(Status.FAILED));
+    gslb = Gslb.builder()
+        .app("p3")
+        .subdomain("e3.a3.testo3")
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .lbs(lbs)
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
 
-    context.getTorbitClient().execute(context.getTorbitApi().deleteMTDBase(mtdBaseId),
+    provisionContext = new ProvisionContext();
+    provisionResponse = executeStatus(gslb, provisionContext);
+    assertThat(provisionResponse.getStatus(), is(Status.FAILED));
+
+    provisionContext.getTorbitClient().execute(provisionContext.getTorbitApi().deleteMTDBase(mtdBaseId),
         MtdBaseResponse.class);
   }
 
-  private List<DeployedLb> deployedLbs() {
-    List<DeployedLb> lbs = new ArrayList<>();
-    lbs.add(DeployedLb.create("lb-101-1", "10.1.100.1"));
-    lbs.add(DeployedLb.create("lb-102-1", "10.2.200.2"));
-    return lbs;
-  }
+  @Test
+  public void testGslbProvider() {
+    Gslb gslb = Gslb.builder()
+        .app("p1")
+        .subdomain("e1.a1.testo1")
+        .lbs(lbsTwoPrimary())
+        .healthChecks(Collections.singletonList(healthCheck()))
+        .distribution(Distribution.PROXIMITY)
+        .torbitConfig(config)
+        .build();
 
-  private List<Cloud> twoPrimaryClouds() {
-    List<Cloud> clouds = new ArrayList<>();
-    clouds.add(Cloud.create(101, cloud1, "1", "active", null, null));
-    clouds.add(Cloud.create(102, cloud2, "1", "active", null, null));
-    return clouds;
-  }
+    GslbProvider provider = new GslbProvider();
+    GslbProvisionResponse response = provider.create(gslb);
 
-  private LbConfig httpLbConfig() {
-    return LbConfig.create("['http 80 http 8080']",  "{'8080':'GET /'}");
+    assertThat(response.getStatus(), is(Status.SUCCESS));
+    assertNotNull(response.getMtdBaseId());
+    assertNotNull(response.getMtdDeploymentId());
+
+    ProvisionedGslb provisionedGslb = ProvisionedGslb.builder()
+        .app(gslb.app())
+        .subdomain(gslb.subdomain())
+        .torbitConfig(gslb.torbitConfig())
+        .build();
+    GslbResponse response1 = provider.delete(provisionedGslb);
+    assertThat(response1.getStatus(), is(Status.SUCCESS));
   }
 
 }

@@ -8,22 +8,23 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonParser;
-import com.oneops.gslb.domain.Action;
-import com.oneops.gslb.domain.Cloud;
-import com.oneops.gslb.domain.DeployedLb;
-import com.oneops.gslb.domain.Fqdn;
-import com.oneops.gslb.domain.GslbRequest;
-import com.oneops.gslb.domain.GslbRequest.Builder;
+
+import com.oneops.gslb.domain.Distribution;
+import com.oneops.gslb.domain.Gslb;
+import com.oneops.gslb.domain.Gslb.Builder;
+
+import com.oneops.gslb.domain.HealthCheck;
 import com.oneops.gslb.domain.InfobloxConfig;
-import com.oneops.gslb.domain.LbConfig;
+import com.oneops.gslb.domain.Lb;
+
+import com.oneops.gslb.domain.Protocol;
 import com.oneops.gslb.domain.TorbitConfig;
 import com.oneops.gslb.mtd.v2.domain.DcCloud;
 import com.oneops.gslb.mtd.v2.domain.MtdBaseHostRequest;
 import com.oneops.gslb.mtd.v2.domain.MtdHostHealthCheck;
 import com.oneops.gslb.mtd.v2.domain.MtdTarget;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
@@ -35,14 +36,6 @@ public class MtdBaseTest {
   @Before
   public void init() {
     loadCloudMap();
-    handler.jsonParser = new JsonParser();
-    Gson gson = new Gson();
-    handler.gson = gson;
-    handler.interval = "3s";
-    handler.timeOut = "2s";
-    handler.failureCountToMarkDown = 3;
-    handler.retryDelay = "20s";
-
   }
 
   private void loadCloudMap() {
@@ -50,12 +43,13 @@ public class MtdBaseTest {
     handler.cloudMap.put("cl2", DcCloud.create(12, "cl2", 5, null));
   }
 
-
   @Test
   public void testMtdTargets() {
-    Context context = getContext();
+    Gslb gslb = request();
+    ProvisionContext context = new ProvisionContext();
+    initContext(gslb, context);
     try {
-      List<MtdTarget> mtdTargets = handler.getMtdTargets(context);
+      List<MtdTarget> mtdTargets = handler.getMtdTargets(gslb, context);
       assertEquals(2, mtdTargets.size());
       MtdTarget target1 = mtdTargets.get(0);
       assertEquals(Long.valueOf(10), new Long(target1.cloudId()));
@@ -74,137 +68,129 @@ public class MtdBaseTest {
   }
 
   @Test
-  public void allTcpPortsHaveHealthChecks() {
-    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['tcp 3306 tcp 3307', 'tcp 3308 tcp 3309']", "{'3309':'port-check'}"));
+  public void shouldAddHealthCheckForTcpPort() {
+    List<HealthCheck> healthChecksDef = new ArrayList<>();
+    healthChecksDef.add(HealthCheck.builder().protocol(Protocol.TCP).port(3306).path("/").build());
+    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(
+        getRequestForHealthChecks(healthChecksDef));
+    assertThat(healthChecks.size(), is(1));
+    MtdHostHealthCheck healthCheck = healthChecks.get(0);
+    assertThat(healthCheck.protocol(), is("tcp"));
+    assertThat(healthCheck.port(), is(3306));
+    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
+  }
+
+  @Test
+  public void allHttpPortsHaveHealthChecks() {
+    List<HealthCheck> healthChecksDef = new ArrayList<>();
+    healthChecksDef.add(HealthCheck.builder().protocol(Protocol.HTTP).port(80).path("/").build());
+    healthChecksDef.add(HealthCheck.builder().protocol(Protocol.HTTP).port(90).path("/").build());
+    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(
+        getRequestForHealthChecks(healthChecksDef));
     assertThat(healthChecks.size(), is(2));
-
-    MtdHostHealthCheck healthCheck = healthChecks.get(0);
-    assertThat(healthCheck.protocol(), is("tcp"));
-    assertThat(healthCheck.port(), is(3306));
-    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
-
-    healthCheck = healthChecks.get(1);
-    assertThat(healthCheck.protocol(), is("tcp"));
-    assertThat(healthCheck.port(), is(3308));
-    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
-  }
-
-  @Test
-  public void shouldAddDefaultHealthCheckForTcpPort() {
-    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['tcp 3306 tcp 3307']", null));
-    assertThat(healthChecks.size(), is(1));
-    MtdHostHealthCheck healthCheck = healthChecks.get(0);
-    assertThat(healthCheck.protocol(), is("tcp"));
-    assertThat(healthCheck.port(), is(3306));
-    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
-
-    healthChecks = handler.getHealthChecks(getContextForHealthChecks("['tcp 3306 tcp 3307']", "[]"));
-    assertThat(healthChecks.size(), is(1));
-    healthCheck = healthChecks.get(0);
-    assertThat(healthCheck.protocol(), is("tcp"));
-    assertThat(healthCheck.port(), is(3306));
-    assertThat(healthCheck.testObjectPath(), anyOf(nullValue(), is("")));
-  }
-
-  @Test
-  public void allHttpPortsWithEcvHaveHealthChecks() {
-    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['http 80 http 8080', 'http 90 http 9090']", "{'8080':'GET /'}"));
-    assertThat(healthChecks.size(), is(1));
     MtdHostHealthCheck healthCheck = healthChecks.get(0);
     assertThat(healthCheck.protocol(), is("http"));
     assertThat(healthCheck.port(), is(80));
     assertThat(healthCheck.testObjectPath(), is("/"));
+    healthCheck = healthChecks.get(1);
+    assertThat(healthCheck.protocol(), is("http"));
+    assertThat(healthCheck.port(), is(90));
+    assertThat(healthCheck.testObjectPath(), is("/"));
   }
 
   @Test
-  public void testMtdHealthCheckForHttp() {
-    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(getContextForHealthChecks("['http 80 http 8080']", "{'8080':'GET /'}"));
-    assertEquals(1, healthChecks.size());
+  public void httpAndTcpPortChecks() {
+    List<HealthCheck> healthChecksDef = new ArrayList<>();
+    healthChecksDef.add(HealthCheck.builder().protocol(Protocol.HTTP).port(80).path("/").build());
+    healthChecksDef.add(HealthCheck.builder().protocol(Protocol.TCP).port(3306).path("/").build());
+    List<MtdHostHealthCheck> healthChecks = handler.getHealthChecks(
+        getRequestForHealthChecks(healthChecksDef));
+    assertThat(healthChecks.size(), is(2));
     MtdHostHealthCheck healthCheck = healthChecks.get(0);
-    assertEquals(80, healthCheck.port().longValue());
-    assertEquals("http", healthCheck.protocol());
-    assertEquals("/", healthCheck.testObjectPath());
+    assertThat(healthCheck.protocol(), is("http"));
+    assertThat(healthCheck.port(), is(80));
+    assertThat(healthCheck.testObjectPath(), is("/"));
+    healthCheck = healthChecks.get(1);
+    assertThat(healthCheck.protocol(), is("tcp"));
+    assertThat(healthCheck.port(), is(3306));
   }
 
   @Test
   public void shouldChangeHostNameToLowerCase() throws Exception {
-    Context context = new Context(request());
-    context.setTorbitClient(mock(TorbitClient.class));
-    Builder builder = GslbRequest.builder();
-    builder.logContextId("").
-        platform("PLT1").
-        assembly("combo1").
-        environment("STG").
-        org("org1").
-        action(Action.add).
-        platformEnabled(true);
-    addFqdn(builder);
-    addLbConfig(builder);
-    addClouds(builder);
+    Builder builder = Gslb.builder();
+    builder.logContextId("")
+        .app("PLT1")
+        .subdomain("STG.combo1.org1");
+    addDistribution(builder);
+    addHealthCheck(builder);
+    addConfigs(builder);
     addDeployedLbs(builder);
-    MtdBaseHostRequest mtdBaseHostRequest = handler.mtdBaseHostRequest(context);
+    Gslb gslb = builder.build();
+    ProvisionContext context = new ProvisionContext();
+    initContext(gslb, context);
+    MtdBaseHostRequest mtdBaseHostRequest = handler.mtdBaseHostRequest(gslb, context);
     assertThat(mtdBaseHostRequest.mtdHost().mtdHostName(), is("plt1"));
   }
 
-  private Context getContextForHealthChecks(String listeners, String ecvMap) {
-    Builder builder = GslbRequest.builder();
+  private Gslb getRequestForHealthChecks(List<HealthCheck> healthChecks) {
+    Builder builder = Gslb.builder();
     addBase(builder);
-    addFqdn(builder);
-    addClouds(builder);
+    addDistribution(builder);
+    addConfigs(builder);
     addDeployedLbs(builder);
-    builder.lbConfig(LbConfig.create(listeners, ecvMap));
-    builder.logContextId("");
-    GslbRequest request = builder.build();
-    return new Context(request);
+    builder.healthChecks(healthChecks).logContextId("");
+    Gslb request = builder.build();
+    return request;
   }
 
-  private Context getContext() {
-    Context context = new Context(request());
+  private void initContext(Gslb gslb, Context context) {
+    context.logKey(gslb.logContextId());
     context.setTorbitClient(mock(TorbitClient.class));
-    return context;
+    context.setTorbitApi(mock(TorbitApi.class));
   }
 
-  private GslbRequest request() {
-    Builder builder = GslbRequest.builder();
+  private Gslb request() {
+    Builder builder = Gslb.builder();
     builder.logContextId("");
     addBase(builder);
-    addFqdn(builder);
-    addLbConfig(builder);
-    addClouds(builder);
+    addDistribution(builder);
+    addHealthCheck(builder);
+    addConfigs(builder);
     addDeployedLbs(builder);
     return builder.build();
   }
 
   private void addBase(Builder builder) {
-    builder.platform("plt1").assembly("combo1").environment("stg").org("org1").action(Action.add).platformEnabled(true);
+    builder.app("plt1").subdomain("stg.combo1.org1");
   }
 
-  private void addFqdn(Builder builder) {
-    builder.fqdn(Fqdn.create(null, null, "proximity"));
+  private void addDistribution(Builder builder) {
+    builder.distribution(Distribution.PROXIMITY);
   }
 
-  private void addLbConfig(Builder builder) {
-    builder.lbConfig(LbConfig.create("['http 80 http 80']",  "{'80':'GET /'}"));
+  private void addHealthCheck(Builder builder) {
+    HealthCheck healthCheck = HealthCheck.builder()
+        .protocol(Protocol.HTTP)
+        .port(80)
+        .path("/")
+        .build();
+    builder.healthChecks(Collections.singletonList(healthCheck));
   }
 
   private void addDeployedLbs(Builder builder) {
-    List<DeployedLb> deployedLbs = new ArrayList<>();
-    deployedLbs.add(DeployedLb.create("lb-101-1", "1.1.1.0"));
-    deployedLbs.add(DeployedLb.create("lb-102-1", "1.1.1.1"));
-    builder.deployedLbs(deployedLbs);
+    List<Lb> lbList = new ArrayList<>();
+    lbList.add(Lb.create("cl1", "1.1.1.0", true));
+    lbList.add(Lb.create("cl2", "1.1.1.1", true));
+    builder.lbs(lbList);
   }
 
-  private void addClouds(Builder builder) {
+  private void addConfigs(Builder builder) {
     TorbitConfig torbitConfig = TorbitConfig.create("https://localhost:8443", "test-oo",
         "test_auth", 101, "glb.xyz.com");
     InfobloxConfig infobloxConfig = InfobloxConfig.create("https://localhost:8121",
         "test-oo", "test_pwd", "prod.xyz.com");
-    List<Cloud> clouds = new ArrayList<>();
-
-    clouds.add(Cloud.create(101, "cl1", "1", "active", null, null));
-    clouds.add(Cloud.create(102, "cl2", "1", "active", null, null));
-    builder.platformClouds(clouds);
-    builder.cloud(Cloud.create(101, "cl1", "1", "active", torbitConfig, infobloxConfig));
+    builder.torbitConfig(torbitConfig);
+    builder.infobloxConfig(infobloxConfig);
   }
 
 }
