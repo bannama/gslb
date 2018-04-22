@@ -29,6 +29,7 @@ import com.oneops.gslb.mtd.v2.domain.Version;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,6 +53,14 @@ public class MtdHandler {
   private static final Logger logger = Logger.getLogger(MtdHandler.class);
 
   ConcurrentMap<String, DcCloud> cloudMap = new ConcurrentHashMap<>();
+
+  private Map<Distribution, Integer> distributionMap;
+
+  public MtdHandler() {
+    distributionMap = new HashMap<>();
+    distributionMap.put(Distribution.PROXIMITY, 0);
+    distributionMap.put(Distribution.ROUND_ROBIN, 2);
+  }
 
   public void setupTorbitGslb(Gslb gslb, ProvisionContext context) {
     String logKey = gslb.logContextId();
@@ -219,8 +228,9 @@ public class MtdHandler {
     }
     List<MtdHostHealthCheck> healthChecks = getHealthChecks(gslb);
     context.setApp(gslb.app().toLowerCase());
+    logger.info(context.logKey() + "distribution config for fqdn : " + gslb.distribution());
     MtdHost mtdHost = MtdHost.create(context.getApp(), null, healthChecks, targets,
-        true, 1, null);
+        true, 1, null, distributionMap.get(gslb.distribution()));
     return MtdBaseHostRequest.create(mtdHost);
   }
 
@@ -246,11 +256,11 @@ public class MtdHandler {
       logger.info(logKey + "create MtdHost response  " + hostResponse);
     }
     if (hostResponse != null) {
-      updateExecutionResult(gslb, context, mtdBase, hostResponse);
+      updateExecutionResult(context, mtdBase, hostResponse);
     }
   }
 
-  private void updateExecutionResult(Gslb gslb, ProvisionContext context, MtdBase mtdBase, MtdBaseHostResponse response) {
+  private void updateExecutionResult(ProvisionContext context, MtdBase mtdBase, MtdBaseHostResponse response) {
     GslbProvisionResponse gslbResponse = context.getProvisioningResponse();
     gslbResponse.setMtdBaseId(Integer.toString(mtdBase.mtdBaseId()));
     Version version = response.version();
@@ -373,18 +383,15 @@ public class MtdHandler {
 
   List<MtdTarget> getMtdTargets(Gslb gslb, ProvisionContext context) throws Exception {
     List<Lb> lbs = gslb.lbs();
-
     if (lbs != null && !lbs.isEmpty()) {
-      boolean isProximity = gslb.distribution() == Distribution.PROXIMITY;
-      logger.info(context.logKey() + "distribution config for fqdn : " + gslb.distribution());
-      int weight = 0;
-      if (!isProximity) {
-        weight = 100;
-      }
 
       List<MtdTarget> targetList = new ArrayList<>();
       for (Lb lb : lbs) {
-        addTarget(lb, context, (lb.enabledForTraffic() ? weight : 0), targetList);
+        int weightPercent = 100;
+        if (!lb.enabledForTraffic()) {
+          weightPercent = 0;
+        }
+        addTarget(lb, context, ((lb.weightPercent() != null) ? lb.weightPercent() : weightPercent), targetList);
       }
       return targetList;
     }

@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class DnsMock extends InfobloxClient {
 
@@ -18,7 +19,6 @@ public class DnsMock extends InfobloxClient {
   Map<String, String> newArecs = new HashMap<>();
   List<String> deleteCnames = new ArrayList<>();
   List<String> deleteArecs = new ArrayList<>();
-
 
   @Override
   public List<ARec> getARec(String domainName) throws IOException {
@@ -104,6 +104,16 @@ public class DnsMock extends InfobloxClient {
   @Override
   public int timeout() {
     return 0;
+  }
+
+  @Override
+  public Optional<String> trustStore() {
+    return null;
+  }
+
+  @Override
+  public Optional<String> trustStorePassword() {
+    return null;
   }
 
   public Map<String, String> getNewCnames() {

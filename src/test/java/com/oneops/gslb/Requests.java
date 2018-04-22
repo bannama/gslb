@@ -28,8 +28,8 @@ public class Requests {
     builder.logContextId("");
 
     List<Lb> deployedLbs = new ArrayList<>();
-    deployedLbs.add(Lb.create(cloud, primaryVip,true));
-    deployedLbs.add(Lb.create("dummyCloud", "1.1.1.1",true));
+    deployedLbs.add(Lb.create(cloud, primaryVip,true, 50));
+    deployedLbs.add(Lb.create("dummyCloud", "1.1.1.1",true, 50));
     builder.lbs(deployedLbs);
     builder.cnames(cnames);
     builder.cloudARecords(aRecords);

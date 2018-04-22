@@ -1,6 +1,7 @@
 package com.oneops.gslb;
 
 import com.oneops.gslb.domain.CloudARecord;
+import com.oneops.gslb.domain.Distribution;
 import com.oneops.gslb.domain.Gslb;
 import com.oneops.gslb.domain.GslbProvisionResponse;
 import com.oneops.gslb.domain.GslbResponse;
@@ -88,8 +89,8 @@ public class GslbVerifier {
           if (StringUtils.isNotBlank(lbVip)) {
             verify(() -> records != null && records.size() == 1 && records.get(0).ipv4Addr().equals(lbVip),
                 "cloud cname verify failed " + aRecord.aRecord());
-            verify(() -> lbVip.equals(dnsEntries.get(aRecord.cloud())),
-                "result ci entries attribute has entry for cloud cname " + aRecord.cloud());
+            verify(() -> lbVip.equals(dnsEntries.get(aRecord.aRecord())),
+                "result ci entries attribute has entry for cloud cname " + aRecord.aRecord());
           }
         }
       }
@@ -166,6 +167,15 @@ public class GslbVerifier {
     verify(() -> hostResp.isSuccessful(), "mtd host version exists");
 
     MtdHost host = hostResp.getBody().mtdHost();
+    if (gslb.distribution() == Distribution.PROXIMITY) {
+      verify(() -> host.localityScope() != null && host.localityScope() == 0,
+          "mtd host locality scope not matching proximity distribution");
+    }
+    else if (gslb.distribution() == Distribution.ROUND_ROBIN) {
+      verify(() -> host.localityScope() != null && host.localityScope() == 2,
+          "mtd host locality scope not matching round robin distribution");
+    }
+
     logger.info(gslb.logContextId() + "verifying mtd host targets");
     List<MtdTarget> targets = host.mtdTargets();
     logger.info(gslb.logContextId() + "configured mtd targets " + targets.stream().

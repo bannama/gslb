@@ -37,12 +37,17 @@ public abstract class MtdHost {
   @Nullable
   public abstract List<DCFallbackTarget> dcFallbackTargets();
 
+  @SerializedName("locality_scope")
+  @Nullable
+  public abstract Integer localityScope();
+
   public static MtdHost create(String mtdHostName, @Nullable  String fallbackTarget,
       @Nullable List<MtdHostHealthCheck> mtdHostHealthChecks, List<MtdTarget> mtdTargets,
       Boolean isDcFailover, Integer loadBalancingDistribution,
-      @Nullable List<DCFallbackTarget> dcFallbackTargets) {
+      @Nullable List<DCFallbackTarget> dcFallbackTargets,
+      @Nullable Integer localityScope) {
     return new AutoValue_MtdHost(mtdHostName, fallbackTarget, mtdHostHealthChecks,
-        mtdTargets, isDcFailover, loadBalancingDistribution, dcFallbackTargets);
+        mtdTargets, isDcFailover, loadBalancingDistribution, dcFallbackTargets, localityScope);
   }
 
   public static TypeAdapter<MtdHost> typeAdapter(Gson gson) {

@@ -9,7 +9,7 @@
   <artifactId>gslb</artifactId>
   <packaging>jar</packaging>
   <name>gslb</name>
-  <version>1.0.5-SNAPSHOT</version>
+  <version>1.0.6-SNAPSHOT</version>
   <description>Library for managing gslb</description>
   <url>https://github.com/oneops/gslb</url>
 
@@ -18,7 +18,7 @@
     <autovalue-gson.version>0.4.5</autovalue-gson.version>
     <jsr305.version>3.0.2</jsr305.version>
     <junit.version>4.11</junit.version>
-    <infoblox-java.version>1.0.1</infoblox-java.version>
+    <infoblox-java.version>1.1.0</infoblox-java.version>
     <retrofit.version>2.1.0</retrofit.version>
     <okhttp.version>3.9.0</okhttp.version>
     <slf4j.version>1.6.1</slf4j.version>

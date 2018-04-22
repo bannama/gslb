@@ -133,15 +133,15 @@ public class MtdHandlerTest {
 
   private List<Lb> lbsTwoPrimary() {
     List<Lb> lbs = new ArrayList<>();
-    lbs.add(Lb.create(cloud1,"10.1.100.1", true));
-    lbs.add(Lb.create(cloud2,"10.2.200.2", true));
+    lbs.add(Lb.create(cloud1,"10.1.100.1", true, null));
+    lbs.add(Lb.create(cloud2,"10.2.200.2", true, null));
     return lbs;
   }
 
   private List<Lb> lbsOnePrimaryOneSecondary() {
     List<Lb> lbs = new ArrayList<>();
-    lbs.add(Lb.create(cloud1,"10.1.100.1", true));
-    lbs.add(Lb.create(cloud2,"10.2.200.2", false));
+    lbs.add(Lb.create(cloud1,"10.1.100.1", true, null));
+    lbs.add(Lb.create(cloud2,"10.2.200.2", false, null));
     return lbs;
   }
 
@@ -189,7 +189,7 @@ public class MtdHandlerTest {
   @Test
   public void updateWithNewPrimaryCloud() throws Exception {
     List<Lb> lbs = new ArrayList<>();
-    lbs.add(Lb.create(cloud1, "10.1.100.1", true));
+    lbs.add(Lb.create(cloud1, "10.1.100.1", true, null));
     Gslb gslb = Gslb.builder()
         .app("p3")
         .subdomain("e3.a3.testo3")
@@ -217,7 +217,7 @@ public class MtdHandlerTest {
     assertThat(target1.mtdTargetHost(), is("10.1.100.1"));
 
     //add another cloud
-    lbs.add(Lb.create(cloud2, "10.2.200.2", true));
+    lbs.add(Lb.create(cloud2, "10.2.200.2", true, null));
     gslb = Gslb.builder()
         .app("p3")
         .subdomain("e3.a3.testo3")
@@ -255,8 +255,8 @@ public class MtdHandlerTest {
   @Test
   public void updateActionWithCloudFailover() throws Exception {
     List<Lb> lbs = new ArrayList<>();
-    lbs.add(Lb.create(cloud1, "10.1.100.1", true));
-    lbs.add(Lb.create(cloud2, "10.2.200.2", false));
+    lbs.add(Lb.create(cloud1, "10.1.100.1", true, 50));
+    lbs.add(Lb.create(cloud2, "10.2.200.2", false, 50));
     Gslb gslb = Gslb.builder()
         .app("p4")
         .subdomain("e4.a4.testo4")
@@ -270,8 +270,8 @@ public class MtdHandlerTest {
 
     //add another cloud with primary secondary failover
     lbs.clear();
-    lbs.add(Lb.create(cloud2, "10.2.200.2", true));
-    lbs.add(Lb.create(cloud1, "10.1.100.1", false));
+    lbs.add(Lb.create(cloud2, "10.2.200.2", true, 100));
+    lbs.add(Lb.create(cloud1, "10.1.100.1", false, 0));
     gslb = Gslb.builder()
         .app("p4")
         .subdomain("e4.a4.testo4")
@@ -309,8 +309,8 @@ public class MtdHandlerTest {
   @Test
   public void platformDisable() throws Exception {
     List<Lb> lbs = new ArrayList<>();
-    lbs.add(Lb.create(cloud1, "10.1.100.1", true));
-    lbs.add(Lb.create(cloud2, "10.2.200.2", true));
+    lbs.add(Lb.create(cloud1, "10.1.100.1", true, null));
+    lbs.add(Lb.create(cloud2, "10.2.200.2", true, null));
     Gslb gslb = Gslb.builder()
         .app("p5")
         .subdomain("e5.a5.testo5")
